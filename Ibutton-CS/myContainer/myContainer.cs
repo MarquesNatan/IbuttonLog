@@ -14,11 +14,6 @@ namespace Ibutton_CS.Container
         {
             PortAdapter portAdapter = null;
 
-            Console.WriteLine(@"
-                                ***************************
-                                *      PARANDO MISSÃO     *
-                                ***************************");
-
             try
             {
                 portAdapter = AccessProvider.GetAdapter("{DS9490}", "USB1");
@@ -54,7 +49,8 @@ namespace Ibutton_CS.Container
                         Console.WriteLine();
                         if (deviceAddress[0].ToString() == "83")
                         {
-                            ClearMemoryLog(portAdapter);
+                            // ClearMemoryLog(portAdapter);
+                            StopMission(portAdapter);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -134,12 +130,103 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
+            byte[] missionReg = null;
+
+            int sampleRate;
+            int missionDelay;
+
+            Boolean rolloverEnabled;
+            Boolean syncClock;
+            Boolean[] channelEnable;
+
+            missionReg = 
+
+            try
+            {
+
+
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }
+
+        }
+
+        public void StartMission(PortAdapter portAdapter)
+        {
 
         }
 
         public void StopMission(PortAdapter portAdapter)
         {
+            byte[] buffer = new byte[20];
+            buffer[0] = (byte)0x66;
+            buffer[1] = 0x09;
+            buffer[2] = (byte)0xBB;
 
+            // Dummy password
+            buffer[3] = 0xFF;
+            buffer[4] = 0xFF;
+            buffer[5] = 0xFF;
+            buffer[6] = 0xFF;
+            buffer[7] = 0xFF;
+            buffer[8] = 0xFF;
+            buffer[9] = 0xFF;
+            buffer[10] = 0xFF;
+
+            // Release bytes
+            buffer[11] = (byte)0xFF;
+            buffer[12] = (byte)0xFF;
+
+            byte result;
+            int cnt = 0;
+
+            try
+            {
+                Console.WriteLine(@"
+                                ***************************
+                                *      PARANDO MISSÃO     *
+                                ***************************");
+
+                portAdapter.DataBlock(buffer, 0, 13);
+
+                // Compute CRC and verify it is correct
+                if (CRC16.Compute(buffer, 0, 13, 0) != 0x0000B001)
+                {
+                    throw new Exception("Invalid CRC16 read from device.");
+                }
+
+                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+                portAdapter.GetByte();
+
+                Thread.Sleep(6);
+
+                do
+                {
+                    result = (byte)portAdapter.GetByte();
+                }
+                while ((result != (byte)0xAA) && (result != (byte)0x55) && (cnt++ < 50));
+
+                if ((result != (byte)0xAA) && (result != (byte)0x55))
+                {
+                    throw new Exception(
+                       "OneWireContainer53-XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+            Console.WriteLine(@"
+                                **************************************
+                                *      MISSÃO PARADA COM SUCESSO     *
+                                **************************************");
         }
 
         public double ReadData_LastMission( PortAdapter portAdapter)
