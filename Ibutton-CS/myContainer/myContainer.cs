@@ -3,8 +3,9 @@
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
-using DalSemi.Serial;
-using System.Runtime.Intrinsics.X86;
+
+using Ibutton_CS.Device;
+
 
 namespace Ibutton_CS.Container
 {
@@ -130,19 +131,37 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
-            byte[] missionReg = null;
+            byte[] newMissionReg = new byte[32];
 
             int sampleRate;
             int missionDelay;
 
-            Boolean rolloverEnabled;
-            Boolean syncClock;
-            Boolean[] channelEnable;
+            bool rolloverEnabled;
+            bool syncClock;
+            bool[] channelEnable;
 
-            missionReg = 
+            // carregar os novos valores do registrador
+            // limpar a memoria de log
+            // configurar os registradores
+            // OPICIONAL - Ler os registradores
+            // Carrega os valores do scratchpad para o registrador
+            // Inicia uma nova missão
+
 
             try
             {
+                // Limpa a memória 
+                ClearMemoryLog(portAdapter);
+                /** 0F 00 02 4B 32 39 55 00
+                 *  00 0A 00 52 66 00 FF FF
+                 *  FF FF FF 02 FC 01 C5 FF
+                 *  FF 5A 00 00 FF FF FF FF 
+                 *  FF FF FF
+                 */
+                newMissionReg = DeviceFunctions.Device.ReadDevice(newMissionReg);
+
+
+
 
 
             }
