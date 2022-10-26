@@ -4,7 +4,7 @@ using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
 
-using Ibutton_CS.Device;
+using Ibutton_CS.DeviceFunctions;
 
 
 namespace Ibutton_CS.Container
@@ -51,7 +51,8 @@ namespace Ibutton_CS.Container
                         if (deviceAddress[0].ToString() == "83")
                         {
                             // ClearMemoryLog(portAdapter);
-                            StopMission(portAdapter);
+                            // StopMission(portAdapter);
+                            StartNewMission(portAdapter);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -152,28 +153,22 @@ namespace Ibutton_CS.Container
             {
                 // Limpa a memória 
                 ClearMemoryLog(portAdapter);
-                /** 0F 00 02 4B 32 39 55 00
+
+                /** 
+                 * 0F 00 02 4B 32 39 55 00
                  *  00 0A 00 52 66 00 FF FF
                  *  FF FF FF 02 FC 01 C5 FF
                  *  FF 5A 00 00 FF FF FF FF 
                  *  FF FF FF
                  */
-                newMissionReg = DeviceFunctions.Device.ReadDevice(newMissionReg);
 
-
-
-
+                newMissionReg = DeviceFunctions.Device.ReadDevice(newMissionReg, portAdapter);
 
             }
             catch
             {
 
             }
-            finally
-            {
-
-            }
-
         }
 
         public void StartMission(PortAdapter portAdapter)

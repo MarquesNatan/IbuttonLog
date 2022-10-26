@@ -4,17 +4,17 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Ibutton_CS.DeviceFunctions
+namespace Ibutton_CS.HardwareMap
 {
     internal class MemoryDevice
     {
-        public int pageLength = 32;
-        public int numberPages = 2;
-        public int size = 2 * 32;
-        public string bankDescription = "Register Mission Backup";
-        public int startPhysicalAddress = 0x0260;
-        public bool generalPurposeMemory = false;
-        public bool readOnly = true;
-        public bool readWrite = false;
+        public static int pageLength = 32;
+        public static int numberPages = 2;
+        public static int size = numberPages * pageLength;
+        public static string bankDescription = "Register Mission Backup";
+        public static int startPhysicalAddress = 0x0260;
+        public static bool generalPurposeMemory = false;
+        public static bool readOnly = true;
+        public static bool readWrite = false;
     }
 }
