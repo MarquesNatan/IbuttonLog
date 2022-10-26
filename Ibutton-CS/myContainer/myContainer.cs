@@ -48,6 +48,8 @@ namespace Ibutton_CS.Container
                         };
 
                         Console.WriteLine();
+
+                        // 83d = 53h
                         if (deviceAddress[0].ToString() == "83")
                         {
                             // ClearMemoryLog(portAdapter);
@@ -75,7 +77,7 @@ namespace Ibutton_CS.Container
         public void ClearMemoryLog(PortAdapter portAdapter)
         {
             byte[] buffer = new byte[20];
-            Console.WriteLine("Enviando Comandos de dentro da função SendCommands");
+            Console.WriteLine("_____________________ Start ClearMemory _____________________"); 
 
             buffer[0] = 0x66;
             buffer[1] = 0x0A;
@@ -96,11 +98,18 @@ namespace Ibutton_CS.Container
             buffer[12] = 0xFF;
             buffer[13] = 0xFF;
 
-            portAdapter.DataBlock(buffer, 0, 14);
-
-            if(CRC16.Compute(buffer, 0, 14, 0) != 0x0000B001)
+            try
             {
-                throw new Exception("Invalid CRC16 read from device.");
+                portAdapter.DataBlock(buffer, 0, 14);
+
+                if (CRC16.Compute(buffer, 0, 14, 0) != 0x0000B001)
+                {
+                    // throw new Exception("Invalid CRC16 read from device.");
+                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(buffer));
+                }
+            }catch(Exception e)
+            {
+                Console.WriteLine(e.Message);
             }
 
             portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
@@ -128,6 +137,9 @@ namespace Ibutton_CS.Container
                 Console.WriteLine("Resultado: {0:X2}", result);
                 Console.WriteLine("Log de Missão limpo com sucesso!");
             }
+
+            Console.WriteLine("_____________________ End ClearMemory _____________________");
+            Console.WriteLine();
         }
 
         public void StartNewMission(PortAdapter portAdapter)
@@ -140,14 +152,6 @@ namespace Ibutton_CS.Container
             bool rolloverEnabled;
             bool syncClock;
             bool[] channelEnable;
-
-            // carregar os novos valores do registrador
-            // limpar a memoria de log
-            // configurar os registradores
-            // OPICIONAL - Ler os registradores
-            // Carrega os valores do scratchpad para o registrador
-            // Inicia uma nova missão
-
 
             try
             {
@@ -213,6 +217,8 @@ namespace Ibutton_CS.Container
                 if (CRC16.Compute(buffer, 0, 13, 0) != 0x0000B001)
                 {
                     throw new Exception("Invalid CRC16 read from device.");
+                    
+                    
                 }
 
                 portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
@@ -230,6 +236,11 @@ namespace Ibutton_CS.Container
                 {
                     throw new Exception(
                        "OneWireContainer53-XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
+                }
+
+                for(int i = 0; i <= buffer.Length - 1; i++)
+                {
+                    Console.WriteLine($"buffer[{i}]: {buffer[i]}");
                 }
             }
             catch (Exception e)

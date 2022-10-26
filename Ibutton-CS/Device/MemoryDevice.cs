@@ -12,7 +12,7 @@ namespace Ibutton_CS.HardwareMap
         public static int numberPages = 2;
         public static int size = numberPages * pageLength;
         public static string bankDescription = "Register Mission Backup";
-        public static int startPhysicalAddress = 0x0260;
+        public static int startPhysicalAddress = 0x0200;
         public static bool generalPurposeMemory = false;
         public static bool readOnly = true;
         public static bool readWrite = false;

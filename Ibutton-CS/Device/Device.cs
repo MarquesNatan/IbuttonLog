@@ -10,8 +10,11 @@ namespace Ibutton_CS.DeviceFunctions
     {
         public static byte[] ReadDevice(byte[] buffer, PortAdapter portAdapter)
         {
+            Console.WriteLine("\n_____________________ Start ReadDevice _____________________");
             byte[] mission = new byte[64];
+
             int page = 0;
+            int retryCount = 0;
 
             do
             {
@@ -22,11 +25,11 @@ namespace Ibutton_CS.DeviceFunctions
                     switch (page)
                     {
                         case 0:
-                            ReadPage(portAdapter, 0, false, mission, 0);
+                            ReadPage(portAdapter, 0, false, mission, 0, null);
                             page++;
                             break;
                         case 1:
-                            ReadPage(portAdapter, 1, true, mission, 32);
+                            ReadPage(portAdapter, 0, true, mission, 0, null);
                             page++;
                             break;
                         default:
@@ -40,57 +43,51 @@ namespace Ibutton_CS.DeviceFunctions
 
             } while (page < 2);
 
-
+            Console.WriteLine("_____________________ End ReadDevice _____________________\n");
             return buffer;
         }
 
-        private static void ReadPage(PortAdapter portAdapter, int page, bool readContinue, byte[] buffer, int offset)
+        private static void ReadPage(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
         {
             byte[] rawBuffer = new byte[16];
-            uint lastCRC = 0;
 
-            rawBuffer[0] = (byte)0x66; // XPC_COMMAND
-            rawBuffer[1] = (byte)0x0B; //  Length byte
-            rawBuffer[2] = (byte)0x44; // XPC_READ_MEMORY_CRC
+            rawBuffer[0] = (byte)0x66;
+            rawBuffer[1] = (byte)0x0B;
+            rawBuffer[2] = (byte)0x44;
 
-            // calcular o endereço da leitura 
+            // calculate values of TA1 and TA2
             int address = page * MemoryDevice.pageLength + MemoryDevice.startPhysicalAddress;
 
-            // Using byte addressing
-            rawBuffer[3] = (byte)(address & 0x00FF);
-            rawBuffer[4] = (byte)((address >> 8) & 0xFF);
+            rawBuffer[3] = (byte)  (address & 0xFF);
+            rawBuffer[4] = (byte)(((address & 0xFFFF) >> 8) & 0xFF);
 
-            // dummy password
-            rawBuffer[5] = (byte)0xFF;
-            rawBuffer[6] = (byte)0xFF;
-            rawBuffer[7] = (byte)0xFF;
-            rawBuffer[8] = (byte)0xFF;
-            rawBuffer[9] = (byte)0xFF;
-            rawBuffer[10] = (byte)0xFF;
-            rawBuffer[11] = (byte)0xFF;
-            rawBuffer[12] = (byte)0xFF;
+            rawBuffer[5] = (byte)0x0FF;
+            rawBuffer[6] = (byte)0x0FF;
+            rawBuffer[7] = (byte)0x0FF;
+            rawBuffer[8] = (byte)0x0FF; 
+            rawBuffer[9] = (byte)0x0FF;
+            rawBuffer[10] = (byte)0x0FF;
+            rawBuffer[11] = (byte)0x0FF;
+            rawBuffer[12] = (byte)0x0FF;
 
-            // configure position 13 and 14 with 0xFF value
-            rawBuffer[13] = (byte)0xFF;
-            rawBuffer[14] = (byte)0xFF;
+            rawBuffer[13] = (byte)0x0FF;
+            rawBuffer[14] = (byte)0x0FF;
+            rawBuffer[15] = (byte)0x0FF;
 
-            try {
-                // do the first block for xpc command, length, sub command, TA1, TA2, and password
+            Console.WriteLine(Convert.ToHexString(rawBuffer));
+
+            try
+            {
                 portAdapter.DataBlock(rawBuffer, 0, 15);
 
-                if (CRC16.Compute(rawBuffer, 0, 15, 0) != 0x0000B001) {
-                    // sp.forceVerify();
-                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToString(rawBuffer));
+                if (CRC16.Compute(rawBuffer, 0, 13, 0) != 0x0000B001)
+                {
+                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
                 }
-
-                Console.WriteLine("CRC OK");
-            }
-            catch (Exception e)
+            }catch(Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-
-            // @TODO : Receber os bits vindos do ibutton
 
         }
 
