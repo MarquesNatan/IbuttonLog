@@ -30,7 +30,7 @@ namespace Ibutton_CS.DeviceFunctions
                             page++;
                             break;
                         case 1:
-                            ReadPage(portAdapter, 1, true, mission, 0, null);
+                            ReadPage(portAdapter, 1, true, mission, 32, null);
                             page++;
                             break;
                         default:
@@ -59,6 +59,8 @@ namespace Ibutton_CS.DeviceFunctions
             // calculate values of TA1 and TA2
             int address = page * MemoryDevice.pageLength + MemoryDevice.startPhysicalAddress;
 
+            Console.WriteLine($@"página: {page} | readContinue: {readContinue} | offSet: {offset} | address: {address.ToString("X")}");
+
             rawBuffer[3] = (byte)  (address & 0xFF);
             rawBuffer[4] = (byte)(((address & 0xFFFF) >> 8) & 0xFF);
 
@@ -75,6 +77,7 @@ namespace Ibutton_CS.DeviceFunctions
             rawBuffer[14] = (byte)0x0FF;
             rawBuffer[15] = (byte)0x0FF;
 
+
             if (!readContinue) {
                 try
                 {
@@ -90,21 +93,36 @@ namespace Ibutton_CS.DeviceFunctions
                     Console.WriteLine(e.Message);
                 }
             }
-            else {
-                Console.WriteLine("Deve fazer outra tratativa");
-                for(int i = 0; i <= rawBuffer.Length - 1; i++) {
-                    Console.Write("{0:X2}", rawBuffer[i]);
-                }
-                Console.WriteLine();
+
+            portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+            
+            portAdapter.GetByte();
+
+            Thread.Sleep(10);
+            portAdapter.SetPowerNormal();
+
+            rawBuffer = new byte[MemoryDevice.pageLength + 3];
+
+            for(int i = 0; i <= rawBuffer.Length - 1; i++)
+            {
+                rawBuffer[i] = (byte)0xFF;
             }
 
-           // portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
-            //int response = portAdapter.GetByte();
+            try {
+                portAdapter.DataBlock(rawBuffer, 0, rawBuffer.Length);
 
-           // Thread.Sleep(10);
+                if (CRC16.Compute(rawBuffer, 1, rawBuffer.Length - 1, 0) != 0x0000B001) {
+                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
+                }
+            }
+            catch(Exception e) {
+                Console.WriteLine(e.Message);
+            }
 
-           // portAdapter.SetPowerNormal();
-
+            for(int i = 0; i <= rawBuffer.Length - 1; i++) {
+                Console.Write("{0:X2}", rawBuffer[i]);
+            }
+            Console.WriteLine();
 
         }
 
