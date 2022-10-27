@@ -49,9 +49,10 @@ namespace Ibutton_CS.Container
 
                         Console.WriteLine();
 
-                        // 83d = 53h
                         if (deviceAddress[0].ToString() == "83")
                         {
+
+                            portAdapter.SelectDevice(deviceAddress, 0);
                             // ClearMemoryLog(portAdapter);
                             // StopMission(portAdapter);
                             StartNewMission(portAdapter);
@@ -146,25 +147,10 @@ namespace Ibutton_CS.Container
         {
             byte[] newMissionReg = new byte[32];
 
-            int sampleRate;
-            int missionDelay;
-
-            bool rolloverEnabled;
-            bool syncClock;
-            bool[] channelEnable;
-
             try
             {
                 // Limpa a memória 
-                ClearMemoryLog(portAdapter);
-
-                /** 
-                 * 0F 00 02 4B 32 39 55 00
-                 *  00 0A 00 52 66 00 FF FF
-                 *  FF FF FF 02 FC 01 C5 FF
-                 *  FF 5A 00 00 FF FF FF FF 
-                 *  FF FF FF
-                 */
+                // ClearMemoryLog(portAdapter
 
                 newMissionReg = DeviceFunctions.Device.ReadDevice(newMissionReg, portAdapter);
 

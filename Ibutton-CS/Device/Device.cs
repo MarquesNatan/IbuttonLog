@@ -2,7 +2,8 @@
 using DalSemi.Utils;
 using System;
 using Ibutton_CS.HardwareMap;
-
+using DalSemi.OneWire;
+using System.ComponentModel.DataAnnotations;
 
 namespace Ibutton_CS.DeviceFunctions
 {
@@ -29,7 +30,7 @@ namespace Ibutton_CS.DeviceFunctions
                             page++;
                             break;
                         case 1:
-                            ReadPage(portAdapter, 0, true, mission, 0, null);
+                            ReadPage(portAdapter, 1, true, mission, 0, null);
                             page++;
                             break;
                         default:
@@ -74,20 +75,36 @@ namespace Ibutton_CS.DeviceFunctions
             rawBuffer[14] = (byte)0x0FF;
             rawBuffer[15] = (byte)0x0FF;
 
-            Console.WriteLine(Convert.ToHexString(rawBuffer));
-
-            try
-            {
-                portAdapter.DataBlock(rawBuffer, 0, 15);
-
-                if (CRC16.Compute(rawBuffer, 0, 13, 0) != 0x0000B001)
+            if (!readContinue) {
+                try
                 {
-                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
+                    portAdapter.DataBlock(rawBuffer, 0, 15);
+
+                    if (CRC16.Compute(rawBuffer, 0, 15, 0) != 0x0000B001)
+                    {
+                        throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
+                    }
+
+                }catch(Exception e)
+                {
+                    Console.WriteLine(e.Message);
                 }
-            }catch(Exception e)
-            {
-                Console.WriteLine(e.Message);
             }
+            else {
+                Console.WriteLine("Deve fazer outra tratativa");
+                for(int i = 0; i <= rawBuffer.Length - 1; i++) {
+                    Console.Write("{0:X2}", rawBuffer[i]);
+                }
+                Console.WriteLine();
+            }
+
+           // portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+            //int response = portAdapter.GetByte();
+
+           // Thread.Sleep(10);
+
+           // portAdapter.SetPowerNormal();
+
 
         }
 
