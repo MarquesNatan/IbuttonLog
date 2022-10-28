@@ -11,6 +11,9 @@ namespace Ibutton_CS.Container
 {
     public class myContainer
     {
+
+        Device myDevice = new Device();
+
         public void myContainer_StopMission()
         {
             PortAdapter portAdapter = null;
@@ -55,8 +58,8 @@ namespace Ibutton_CS.Container
                             portAdapter.SelectDevice(deviceAddress, 0);
                             // ClearMemoryLog(portAdapter);
                             // StopMission(portAdapter);
-                            // StartNewMission(portAdapter);
-                            ReadResultPage(portAdapter, 0);
+                            StartNewMission(portAdapter);
+                            // ReadResultPage(portAdapter, 0);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -153,7 +156,7 @@ namespace Ibutton_CS.Container
                 // Limpa a memória 
                 // ClearMemoryLog(portAdapter
 
-                newMissionReg = DeviceFunctions.Device.ReadDevice(newMissionReg, portAdapter);
+                newMissionReg = myDevice.ReadDevice(newMissionReg, portAdapter);
 
             }
             catch
