@@ -1,11 +1,11 @@
 ﻿using System;
-
+using System.Reflection.Metadata;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
 
 using Ibutton_CS.DeviceFunctions;
-
+using Ibutton_CS.HardwareMap;
 
 namespace Ibutton_CS.Container
 {
@@ -55,7 +55,8 @@ namespace Ibutton_CS.Container
                             portAdapter.SelectDevice(deviceAddress, 0);
                             // ClearMemoryLog(portAdapter);
                             // StopMission(portAdapter);
-                            StartNewMission(portAdapter);
+                            // StartNewMission(portAdapter);
+                            ReadResultPage(portAdapter, 0);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -161,6 +162,15 @@ namespace Ibutton_CS.Container
             }
         }
 
+        public void ReadResultPage(PortAdapter portAdapter, byte channel)
+        {
+            byte[] buffer = new byte[MemoryLogMap.pageLength];
+            Console.WriteLine("_____________________ Start ReadLogPages _____________________");
+            //GetLogMemory(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
+            DeviceFunctions.Device.GetLogMemory(portAdapter, 0, false, buffer, 0, null);
+            Console.WriteLine("_____________________ End ReadLogPages _____________________");
+        }
+
         public void StartMission(PortAdapter portAdapter)
         {
 
@@ -238,16 +248,6 @@ namespace Ibutton_CS.Container
                                 **************************************
                                 *      MISSÃO PARADA COM SUCESSO     *
                                 **************************************");
-        }
-
-        public double ReadData_LastMission( PortAdapter portAdapter)
-        {
-            return 10.0;
-        }
-
-        public double ReadData_LastConversion( PortAdapter portAdapter)
-        {
-            return 12.0;
         }
     }
 }
