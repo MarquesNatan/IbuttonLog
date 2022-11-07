@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 using System.Reflection.Metadata;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
@@ -149,34 +150,31 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
-            byte[] newMissionReg = new byte[32];
+            byte[] newMissionReg = null;
 
             try
             {
-                // Limpa a memória 
-                // ClearMemoryLog(portAdapter
+                // stop previous mission
+                // StopMission(portAdapter);
 
                 newMissionReg = myDevice.ReadDevice(newMissionReg, portAdapter);
+                bool SUTA = isStartUponTemperatureAlarmEnable(newMissionReg);
 
+                Console.WriteLine($"SUTA IS: " +  (SUTA ? "ENABLE" : "DISABLE"));
+
+                double missionResolution = GetMissionResolution(0, newMissionReg);
+
+                Console.WriteLine($"RESOLUTION IS: {missionResolution}");
+
+                for (int i = 0; i < newMissionReg.Length - 1; i++)
+                {
+                    Console.Write("{0:X2}-", newMissionReg[i]);
+                };
             }
             catch
             {
 
             }
-        }
-
-        public void ReadResultPage(PortAdapter portAdapter, byte channel)
-        {
-            byte[] buffer = new byte[MemoryLogMap.pageLength];
-            Console.WriteLine("_____________________ Start ReadLogPages _____________________");
-            //GetLogMemory(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
-            DeviceFunctions.Device.GetLogMemory(portAdapter, 0, false, buffer, 0, null);
-            Console.WriteLine("_____________________ End ReadLogPages _____________________");
-        }
-
-        public void StartMission(PortAdapter portAdapter)
-        {
-
         }
 
         public void StopMission(PortAdapter portAdapter)
@@ -236,11 +234,6 @@ namespace Ibutton_CS.Container
                     throw new Exception(
                        "OneWireContainer53-XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
                 }
-
-                for(int i = 0; i <= buffer.Length - 1; i++)
-                {
-                    Console.WriteLine($"buffer[{i}]: {buffer[i]}");
-                }
             }
             catch (Exception e)
             {
@@ -251,6 +244,30 @@ namespace Ibutton_CS.Container
                                 **************************************
                                 *      MISSÃO PARADA COM SUCESSO     *
                                 **************************************");
+        }
+
+        public bool isStartUponTemperatureAlarmEnable(byte[] missionRegister)
+        {
+            return GetFlag(0x213 + 1, 0x20, missionRegister);
+        }
+
+        public double  GetMissionResolution(byte channel, byte[] missionRegister)
+        {
+            double resolution = 0;
+
+            if(channel == 0x00)
+            {
+                bool flag = GetFlag(0x213 + 1, 0x04, missionRegister);
+                resolution =  (flag ? 0.0625 : 0.5);
+            }
+
+            return resolution;
+        }
+
+        public bool GetFlag(int register, byte bitMask, byte[] state)
+        {
+            Console.WriteLine($"GetFlag: {state[register & 0x3F]}");
+            return ((state[register & 0x3F] & bitMask) != 0x00);
         }
     }
 }

@@ -30,7 +30,7 @@ namespace Ibutton_CS.HardwareMap
         }
 
 
-        public void ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
+        public byte[] ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
         {
             byte[] rawBuffer = new byte[16];
 
@@ -99,12 +99,7 @@ namespace Ibutton_CS.HardwareMap
             catch (Exception e) {
                 Console.WriteLine(e.Message);
             }
-
-            for (int i = 0; i <= rawBuffer.Length - 1; i++) {
-                Console.Write("{0:X2}", rawBuffer[i]);
-            }
-
-            Console.WriteLine();
+            return rawBuffer;
         }
 
 
