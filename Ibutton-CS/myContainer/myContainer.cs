@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Reflection;
 using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
+using System.Security.AccessControl;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
@@ -55,10 +57,8 @@ namespace Ibutton_CS.Container
 
                         if (deviceAddress[0].ToString() == "83")
                         {
-
-                            portAdapter.SelectDevice(deviceAddress, 0);
-                            // ClearMemoryLog(portAdapter);
                             // StopMission(portAdapter);
+                            // ClearMemoryLog(portAdapter);
                             StartNewMission(portAdapter);
                             // ReadResultPage(portAdapter, 0);
                         }
@@ -83,7 +83,8 @@ namespace Ibutton_CS.Container
         public void ClearMemoryLog(PortAdapter portAdapter)
         {
             byte[] buffer = new byte[20];
-            Console.WriteLine("_____________________ Start ClearMemory _____________________"); 
+            Console.WriteLine();
+            Console.WriteLine("_____________________ Start ClearMemory _____________________");
 
             buffer[0] = 0x66;
             buffer[1] = 0x0A;
@@ -107,7 +108,6 @@ namespace Ibutton_CS.Container
             try
             {
                 portAdapter.DataBlock(buffer, 0, 14);
-
                 if (CRC16.Compute(buffer, 0, 14, 0) != 0x0000B001)
                 {
                     // throw new Exception("Invalid CRC16 read from device.");
@@ -170,11 +170,18 @@ namespace Ibutton_CS.Container
                 {
                     Console.Write("{0:X2}-", newMissionReg[i]);
                 };
+
+                ClearMemoryLog(portAdapter);
             }
             catch
             {
 
             }
+        }
+
+        public void StartMission()
+        {
+
         }
 
         public void StopMission(PortAdapter portAdapter)
@@ -251,6 +258,11 @@ namespace Ibutton_CS.Container
             return GetFlag(0x213 + 1, 0x20, missionRegister);
         }
 
+        public void setStartUponTemperatureAlarmEnable(bool sutaValue)
+        {
+
+        }
+
         public double  GetMissionResolution(byte channel, byte[] missionRegister)
         {
             double resolution = 0;
@@ -264,10 +276,62 @@ namespace Ibutton_CS.Container
             return resolution;
         }
 
+        public void SetMissionResolution(int channel, double resolution, byte[] state)
+        {
+            if(state == null)
+            {
+
+            }
+
+            if(channel == 0x00)
+            {
+                SetFlag(0x213, 0x04, resolution == 0.0625 ? false : true, state);
+            }
+            else
+            {
+                throw new Exception("Invalid Channel");
+            }
+
+            // WriteDevice(state);
+        }
+
+        public void SetSampleRate(int sampleRate)
+        {
+
+        }
+
+        public void EnableChannels(byte[] channels)
+        {
+
+        }
+
+        public void SetClock()
+        {
+
+        }
+
         public bool GetFlag(int register, byte bitMask, byte[] state)
         {
             Console.WriteLine($"GetFlag: {state[register & 0x3F]}");
             return ((state[register & 0x3F] & bitMask) != 0x00);
+        }
+
+        public void SetFlag(int register, byte bitMask, bool flagValue, byte[] state)
+        {
+            register &= 0x3F;
+
+            byte flags = state[register];
+
+            if(flagValue)
+            {
+                flags = (byte)(flags | bitMask);
+            }
+            else
+            {
+                flags = (byte)(flags & ~(bitMask));
+            }
+
+            state[register] = flags;
         }
     }
 }
