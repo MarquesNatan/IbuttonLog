@@ -181,16 +181,18 @@ namespace Ibutton_CS.Container
 
                 if(SUTA)
                 {
-                    setStartUponTemperatureAlarmEnable(false);
-                }
-
-                Console.WriteLine();
-                for (int i = 0; i < newMissionReg.Length - 1; i++)
-                {
-                    Console.Write("{0:X2}-", newMissionReg[i]);
+                    setStartUponTemperatureAlarmEnable(true);
                 }
 
                 SetMissionResolution(channel: 0, resolution: 0.0625, newMissionReg);
+
+                SetClockRunEnable(true);
+
+                Console.WriteLine();
+                for(int i = 0; i < newMissionReg.Length - 1; i++)
+                {
+                    Console.Write("{0:X2}-", newMissionReg[i]);
+                }
 
             }
             catch
@@ -302,12 +304,12 @@ namespace Ibutton_CS.Container
         {
             if(state == null)
             {
-
+                throw new Exception("Invalid mission register, restart program");
             }
 
             if(channel == 0x00)
             {
-                SetFlag(0x213, 0x04, resolution == 0.0625 ? false : true, state);
+                SetFlag(0x213, 0x04, resolution == 0.0625 ? true : false, state);
             }
             else
             {
@@ -327,9 +329,9 @@ namespace Ibutton_CS.Container
 
         }
 
-        public void SetClock()
+        public void SetClockRunEnable (bool runEnable)
         {
-
+            SetFlag(0x212, 0x01, runEnable, newMissionReg);
         }
 
         public byte[] WriteDevice(byte[] state)
