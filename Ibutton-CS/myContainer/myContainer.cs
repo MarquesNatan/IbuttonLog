@@ -208,6 +208,8 @@ namespace Ibutton_CS.Container
 
                 SetSampleRate(sampleRate);
 
+                SetClock(true);
+
                 Console.WriteLine();
                 for(int i = 0; i < newMissionReg.Length - 1; i++)
                 {
@@ -374,6 +376,26 @@ namespace Ibutton_CS.Container
         public void SetClockRunEnable (bool runEnable)
         {
             SetFlag(0x212, 0x01, runEnable, newMissionReg);
+        }
+
+        public void SetClock(bool time)
+        {
+            long timestamp = (long)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+            byte[] timeHex = new byte[4];
+
+            // Timestamp to bytes
+            timeHex[0] = (byte)(timestamp & 0xFF);
+            timeHex[1] = (byte)((timestamp >> 8) & 0xFF);
+            timeHex[2] = (byte)((timestamp >> 16) & 0x00FF);
+            timeHex[3] = (byte)((timestamp >> 24) & 0xFF);
+
+            Console.WriteLine();
+            Console.WriteLine("TIMESTAMP: {0:X2}", timestamp);
+
+            for(int i = 0; i <= timeHex.Length - 1; i++)
+            {
+                SetFlag(0x200 + i, timeHex[i], true, newMissionReg);
+            }
         }
 
         public byte[] WriteDevice(byte[] state)
