@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.SymbolStore;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
@@ -151,9 +152,12 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
+            //@TODO: Verificar se a memory é little endian ou big endian
 
             try
             {
+
+                int sampleRate = 1200;
                 // stop previous mission
                 // StopMission(portAdapter);
 
@@ -187,6 +191,22 @@ namespace Ibutton_CS.Container
                 SetMissionResolution(channel: 0, resolution: 0.0625, newMissionReg);
 
                 SetClockRunEnable(true);
+
+                EnableChannels(0, true);
+
+                // sample in 
+                if(sampleRate % 60 == 0x00)
+                {
+                    sampleRate = (sampleRate / 60) & 0x3FFF;
+
+                    SetSampleRateType(false);
+                }
+                else
+                {
+                    SetSampleRateType(true);
+                }
+
+                SetSampleRate(sampleRate);
 
                 Console.WriteLine();
                 for(int i = 0; i < newMissionReg.Length - 1; i++)
@@ -321,12 +341,34 @@ namespace Ibutton_CS.Container
 
         public void SetSampleRate(int sampleRate)
         {
+            byte sampleRateLow;
+            byte sampleRateHigh;
 
+            byte sampleRateHighNibbleLow;
+            byte sampleRateHighNibbleHigh;
+
+            sampleRateLow = (byte)(sampleRate & 0xFF);
+            sampleRateHigh = (byte)((sampleRate >> 0x04) & 0x00FF);
+
+            SetFlag(0x206, sampleRateLow, true, newMissionReg);
+            SetFlag(0x207, sampleRateHigh, true, newMissionReg);
         }
 
-        public void EnableChannels(byte[] channels)
+        public void SetSampleRateType(bool sampleRateIsMinutes)
         {
+            SetFlag(0x212, 0x02, sampleRateIsMinutes, newMissionReg);
+        }
 
+        public void EnableChannels(int channel, bool channelState)
+        {
+            if(channel == 0x00)
+            {
+                SetFlag(0x213, 0x01, channelState, newMissionReg);
+            }
+            else
+            {
+                throw new Exception("Invalid channel, you did mean: Tempeature Channel?");
+            }
         }
 
         public void SetClockRunEnable (bool runEnable)
