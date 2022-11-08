@@ -16,6 +16,7 @@ namespace Ibutton_CS.Container
     {
 
         Device myDevice = new Device();
+        byte[] newMissionReg = null;
 
         public void myContainer_StopMission()
         {
@@ -150,7 +151,6 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
-            byte[] newMissionReg = null;
 
             try
             {
@@ -171,7 +171,27 @@ namespace Ibutton_CS.Container
                     Console.Write("{0:X2}-", newMissionReg[i]);
                 };
 
-                ClearMemoryLog(portAdapter);
+                // Clear memory does not preserver Mission Control Register (0x0213)
+                // ClearMemoryLog(portAdapter);
+
+                for(int i = 0; i < newMissionReg.Length - 1; i++)
+                {
+                    newMissionReg[i] = 0x00;
+                }
+
+                if(SUTA)
+                {
+                    setStartUponTemperatureAlarmEnable(false);
+                }
+
+                Console.WriteLine();
+                for (int i = 0; i < newMissionReg.Length - 1; i++)
+                {
+                    Console.Write("{0:X2}-", newMissionReg[i]);
+                }
+
+                SetMissionResolution(channel: 0, resolution: 0.0625, newMissionReg);
+
             }
             catch
             {
@@ -260,7 +280,9 @@ namespace Ibutton_CS.Container
 
         public void setStartUponTemperatureAlarmEnable(bool sutaValue)
         {
+            SetFlag(0x213, 0x20, sutaValue, newMissionReg);
 
+            WriteDevice(newMissionReg);
         }
 
         public double  GetMissionResolution(byte channel, byte[] missionRegister)
@@ -308,6 +330,13 @@ namespace Ibutton_CS.Container
         public void SetClock()
         {
 
+        }
+
+        public byte[] WriteDevice(byte[] state)
+        {
+            byte[] newState = new byte[64];
+
+            return newState;
         }
 
         public bool GetFlag(int register, byte bitMask, byte[] state)
