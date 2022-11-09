@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics.SymbolStore;
+using System.Net;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
@@ -15,13 +16,13 @@ namespace Ibutton_CS.Container
 {
     public class myContainer
     {
+        PortAdapter portAdapter = null;
 
         Device myDevice = new Device();
         byte[] newMissionReg = null;
 
         public void myContainer_StopMission()
         {
-            PortAdapter portAdapter = null;
 
             try
             {
@@ -162,28 +163,22 @@ namespace Ibutton_CS.Container
                 // StopMission(portAdapter);
 
                 newMissionReg = myDevice.ReadDevice(newMissionReg, portAdapter);
-                bool SUTA = isStartUponTemperatureAlarmEnable(newMissionReg);
-
-                Console.WriteLine($"SUTA IS: " +  (SUTA ? "ENABLE" : "DISABLE"));
-
-                double missionResolution = GetMissionResolution(0, newMissionReg);
-
-                Console.WriteLine($"RESOLUTION IS: {missionResolution}");
-
+                
                 for (int i = 0; i < newMissionReg.Length - 1; i++)
                 {
                     Console.Write("{0:X2}-", newMissionReg[i]);
-                };
+                }
+
+
+                bool SUTA = isStartUponTemperatureAlarmEnable(newMissionReg);
+
+                double missionResolution = GetMissionResolution(0, newMissionReg);
 
                 // Clear memory does not preserver Mission Control Register (0x0213)
                 // ClearMemoryLog(portAdapter);
 
-                for(int i = 0; i < newMissionReg.Length - 1; i++)
-                {
-                    newMissionReg[i] = 0x00;
-                }
 
-                if(SUTA)
+                if (SUTA)
                 {
                     setStartUponTemperatureAlarmEnable(true);
                 }
@@ -211,10 +206,13 @@ namespace Ibutton_CS.Container
                 SetClock(true);
 
                 Console.WriteLine();
+
                 for(int i = 0; i < newMissionReg.Length - 1; i++)
                 {
                     Console.Write("{0:X2}-", newMissionReg[i]);
                 }
+                Console.WriteLine();
+                WriteDevice(newMissionReg);
 
             }
             catch
@@ -222,6 +220,95 @@ namespace Ibutton_CS.Container
 
             }
         }
+
+        public void WriteDevice(byte[] writeBuffer)
+        {
+            int startAddress = 0x00;
+            bool updateRTC = false;
+            int bufferLength = 32 - startAddress;
+
+            if (updateRTC != false)
+            {
+                startAddress = 0x06;
+                bufferLength = 32 - startAddress;
+            }
+
+
+            int offset = startAddress + bufferLength;
+
+            if ((offset & 0x1F) > 0x00)
+            {
+                // Verificar se a senha está correta
+
+                throw new Exception("The password will be replaced, are you sure?");
+            }
+            else
+            {
+                // A senha não será sobreescrita
+                WriteScratchpad(writeBuffer, startAddress, offset, bufferLength);
+
+            }
+
+        }
+
+        public void WriteScratchpad(byte[] writeBuffer, int startAddress, int offset, int length)
+        {
+            if ((startAddress + length) > 32)
+            {
+                throw new Exception("Write exceeds memory bank end");
+            }
+
+            // 9F:00:00:00:10:28:C7:53
+            byte[] deviceAddress = new byte[] { 0x53, 0xC7, 0x28, 0x10, 0x00, 0x00, 0x00, 0x9F };
+
+            if (!portAdapter.SelectDevice(deviceAddress, 0))
+            {
+                throw new Exception("Select devie failed");
+            }
+
+            byte[] raw_buff = new byte[32 + 5];
+
+            raw_buff[0] = 0x0F;
+            // TA1 e TA2
+            raw_buff[1] = (byte)(startAddress & 0xFF);
+            raw_buff[2] = (byte)(((0x200 & 0xFFFF) >> 8) & 0xFF);
+
+            Array.Copy(writeBuffer, 0, raw_buff, 3, length);
+
+            for (int i = 0; i < raw_buff.Length - 1; i++)
+            {
+                Console.Write("{0:X2}-", raw_buff[i]);
+            }
+            Console.WriteLine();
+
+
+            if ((startAddress + length) % 32 == 0x00)
+            {
+                raw_buff[33] = (byte)0xFF;
+                raw_buff[34] = (byte)0xFF;
+            }
+
+            try
+            {
+                portAdapter.DataBlock(raw_buff, 0, length + 3 + 2);
+
+                if (CRC16.Compute(raw_buff, 0, length + 5, 0) != 0x0000B001)
+                {
+                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(raw_buff));
+                }
+                else
+                {
+                    Console.WriteLine("Device Mission Started!");
+                }
+                Console.WriteLine("TESTE 3");
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+
 
         public void StartMission()
         {
@@ -346,9 +433,6 @@ namespace Ibutton_CS.Container
             byte sampleRateLow;
             byte sampleRateHigh;
 
-            byte sampleRateHighNibbleLow;
-            byte sampleRateHighNibbleHigh;
-
             sampleRateLow = (byte)(sampleRate & 0xFF);
             sampleRateHigh = (byte)((sampleRate >> 0x04) & 0x00FF);
 
@@ -388,26 +472,16 @@ namespace Ibutton_CS.Container
             timeHex[1] = (byte)((timestamp >> 8) & 0xFF);
             timeHex[2] = (byte)((timestamp >> 16) & 0x00FF);
             timeHex[3] = (byte)((timestamp >> 24) & 0xFF);
-
-            Console.WriteLine();
-            Console.WriteLine("TIMESTAMP: {0:X2}", timestamp);
-
-            for(int i = 0; i <= timeHex.Length - 1; i++)
+            
+            for (int i = 0; i <= timeHex.Length - 1; i++)
             {
                 SetFlag(0x200 + i, timeHex[i], true, newMissionReg);
+                Console.Write("{0:X2}-", timeHex[i]);
             }
-        }
-
-        public byte[] WriteDevice(byte[] state)
-        {
-            byte[] newState = new byte[64];
-
-            return newState;
         }
 
         public bool GetFlag(int register, byte bitMask, byte[] state)
         {
-            Console.WriteLine($"GetFlag: {state[register & 0x3F]}");
             return ((state[register & 0x3F] & bitMask) != 0x00);
         }
 
