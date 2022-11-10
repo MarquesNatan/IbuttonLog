@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Data.SqlTypes;
 using System.Diagnostics.SymbolStore;
 using System.Net;
 using System.Reflection;
@@ -20,7 +21,7 @@ namespace Ibutton_CS.Container
 
         Device myDevice = new Device();
         byte[] newMissionReg = null;
-        byte[] newMission = new byte[25];
+        byte[] newMission = new byte[25 + 7];
 
         public void myContainer_StopMission()
         {
@@ -61,6 +62,8 @@ namespace Ibutton_CS.Container
 
                         if (deviceAddress[0].ToString() == "83")
                         {
+
+                            portAdapter.SelectDevice(deviceAddress, 0);
                             // StopMission(portAdapter);
                             // ClearMemoryLog(portAdapter);
                             StartNewMission(portAdapter);
@@ -155,46 +158,71 @@ namespace Ibutton_CS.Container
         public void StartNewMission(PortAdapter portAdapter)
         {
 
-            int sampleRate = 1200;
-            for(int i = 0; i < newMission.Length - 1; i++)
+            int sampleRate = 600;
+
+            byte alarmTempLow = 0x00;           // low Alarm 51°
+            byte alarmTempHigh = 0x0A;          // High Alarm 40°
+
+            bool SUTAMode = true;
+
+            byte missionStartDelay = 0x5A;
+
+            for (int i = 0; i < newMission.Length - 1; i++)
             {
                 newMission[i] = 0x00;
-                Console.Write("{0:X2}-", newMission[i]);
             }
-            Console.WriteLine();
 
             try
             {
                 // set mission time
-                SetClock(true);
+                SetTime(true);
 
-
-                if (sampleRate <= 16635)
+                if (sampleRate % 60 == 0x00)
                 {
-                    SetSampleRate(sampleRate);
+                    sampleRate = (sampleRate / 60) & 0x3FFF;
+                    SetSampleRateType(false);
                 }
                 else
                 {
+                    SetSampleRateType(true);
                     throw new Exception("Erro, período de leitura inválido");
+                }
+
+                SetSampleRate(sampleRate);
+
+                SetAlarms(alarmTempLow, false, alarmTempHigh, true);
+
+                // Enable Clock device
+                SetClockRunEnable(true);
+
+                if(SUTAMode)
+                {
+                    SetStartUponTemperatureAlarmEnable(true);
                 }
 
                 // set mission resolution
                 SetMissionResolution(0, 0.0625, newMission);
 
+                SetMissionStartDelay(missionStartDelay);
 
+                newMission[25] = 0xFF;
+                newMission[26] = 0xFF;
+                newMission[27] = 0xFF;
+                newMission[28] = 0xFF;
 
+                newMission[29] = 0xFF;
+                newMission[30] = 0xFF;
+                newMission[31] = 0xFF;
+                // newMission[32] = 0xFF;
+
+                StartMission(true);
 
             }
             catch
             {
 
             }
-            Console.WriteLine("newMission");
-            for (int i = 0; i < newMission.Length - 1; i++)
-            {
 
-                Console.Write("{0:X2}-", newMission[i]);
-            }
 
         }
 
@@ -286,10 +314,47 @@ namespace Ibutton_CS.Container
             }
         }
 
-
-        public void StartMission()
+        public void StartMission(bool missionState)
         {
+            if(missionState)
+            {
+                SetFlag(0x213, 0x01, missionState, newMission);
+            }
+            else
+            {
+                SetFlag(0x213, 0x01, false, newMission);
+            }
 
+            try {
+                byte[] commandPacket = new byte[32 + 5];
+
+                commandPacket[0] = 0x0F;
+                commandPacket[1] = 0x00;
+                commandPacket[2] = 0x02;
+
+                commandPacket[35] = 0xFF;
+                commandPacket[36] = 0xFF;
+
+                Array.Copy(newMission, 0, commandPacket, 3, newMission.Length);
+
+                portAdapter.DataBlock(commandPacket, 0, commandPacket.Length);
+
+                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001) {
+
+                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(commandPacket));
+                }
+
+                int result = portAdapter.GetByte();
+
+                Console.WriteLine();
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+           
         }
 
         public void StopMission(PortAdapter portAdapter)
@@ -361,19 +426,31 @@ namespace Ibutton_CS.Container
                                 **************************************");
         }
 
+        public void SetMissionStartDelay(int startDelay)
+        {
+            int lowByte = (byte)(startDelay & 0xFF);
+            int centerByte = (byte)((startDelay >> 8) & 0xFF);
+            int highByte = (byte)((startDelay >> 16) & 0xFF);
+
+            SetFlag(0x216, (byte)lowByte, true, newMission);
+            SetFlag(0x217, (byte)centerByte, true, newMission);
+            SetFlag(0x218, (byte)highByte, true, newMission);
+
+        }
+
         public bool isStartUponTemperatureAlarmEnable(byte[] missionRegister)
         {
             return GetFlag(0x213 + 1, 0x20, missionRegister);
         }
 
-        public void setStartUponTemperatureAlarmEnable(bool sutaValue)
+        public void SetStartUponTemperatureAlarmEnable(bool sutaValue)
         {
-            SetFlag(0x213, 0x20, sutaValue, newMissionReg);
+            SetFlag(0x213, 0xC0, sutaValue, newMission);
 
-            WriteDevice(newMissionReg);
+            //  WriteDevice(newMissionReg);
         }
 
-        public double  GetMissionResolution(byte channel, byte[] missionRegister)
+        public double GetMissionResolution(byte channel, byte[] missionRegister)
         {
             double resolution = 0;
 
@@ -416,14 +493,14 @@ namespace Ibutton_CS.Container
         {
             byte sampleRateLow;
             byte sampleRateHigh;
-            
+
             if(sampleRate <= 0)
             {
-                sampleRate = 300;
+                sampleRate = 600;
             }
 
             sampleRateLow = (byte)(sampleRate & 0xFF);
-            sampleRateHigh = (byte)((sampleRate & 0xFF00) >> 0x04 );
+            sampleRateHigh = (byte)((sampleRate & 0xFF00) >> 0x04);
 
             SetFlag(0x206, sampleRateLow, true, newMission);
             SetFlag(0x207, sampleRateHigh, true, newMission);
@@ -431,7 +508,7 @@ namespace Ibutton_CS.Container
 
         public void SetSampleRateType(bool sampleRateIsMinutes)
         {
-            SetFlag(0x212, 0x02, sampleRateIsMinutes, newMissionReg);
+            SetFlag(0x212, 0x02, sampleRateIsMinutes, newMission);
         }
 
         public void EnableChannels(int channel, bool channelState)
@@ -448,10 +525,10 @@ namespace Ibutton_CS.Container
 
         public void SetClockRunEnable (bool runEnable)
         {
-            SetFlag(0x212, 0x01, runEnable, newMissionReg);
+            SetFlag(0x212, 0x01, runEnable, newMission);
         }
 
-        public void SetClock(bool time)
+        public void SetTime(bool time)
         {
             long timestamp = (long)DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
             byte[] timeHex = new byte[4];
@@ -468,6 +545,29 @@ namespace Ibutton_CS.Container
 
                 // Console.Write("{0:X2}-",timeHex[i])
             }
+        }
+
+        public void SetAlarms(byte tempLow, bool alarmeLowEnable, byte tempHigh, bool alarmeHighEnable)
+        {
+            int tempAlarm = 2 * tempLow + 82;
+
+            SetFlag(0x208, (byte)tempAlarm, true, newMission);
+            
+            tempAlarm = 2 * tempHigh + 82; 
+            SetFlag(0x209, (byte)tempAlarm, true, newMission);
+
+            EnableAlarm(alarmeLowEnable, alarmeHighEnable);
+        }
+
+        public void EnableAlarm(bool alarmLowEnable, bool alarmHighEnable)
+        {
+            byte alarmBitMask = 0x00;
+
+            if (alarmLowEnable) { alarmBitMask |= 0x01; }
+            if (alarmHighEnable) { alarmBitMask |= 0x02; }
+
+            SetFlag(0x210, alarmBitMask, true, newMission);
+
         }
 
         public bool GetFlag(int register, byte bitMask, byte[] state)
