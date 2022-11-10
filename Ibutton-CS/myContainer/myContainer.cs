@@ -20,6 +20,7 @@ namespace Ibutton_CS.Container
 
         Device myDevice = new Device();
         byte[] newMissionReg = null;
+        byte[] newMission = new byte[25];
 
         public void myContainer_StopMission()
         {
@@ -153,72 +154,48 @@ namespace Ibutton_CS.Container
 
         public void StartNewMission(PortAdapter portAdapter)
         {
-            //@TODO: Verificar se a memory é little endian ou big endian
+
+            int sampleRate = 1200;
+            for(int i = 0; i < newMission.Length - 1; i++)
+            {
+                newMission[i] = 0x00;
+                Console.Write("{0:X2}-", newMission[i]);
+            }
+            Console.WriteLine();
 
             try
             {
+                // set mission time
+                SetClock(true);
 
-                int sampleRate = 1200;
-                // stop previous mission
-                // StopMission(portAdapter);
 
-                newMissionReg = myDevice.ReadDevice(newMissionReg, portAdapter);
-                
-                for (int i = 0; i < newMissionReg.Length - 1; i++)
+                if (sampleRate <= 16635)
                 {
-                    Console.Write("{0:X2}-", newMissionReg[i]);
-                }
-
-
-                bool SUTA = isStartUponTemperatureAlarmEnable(newMissionReg);
-
-                double missionResolution = GetMissionResolution(0, newMissionReg);
-
-                // Clear memory does not preserver Mission Control Register (0x0213)
-                // ClearMemoryLog(portAdapter);
-
-
-                if (SUTA)
-                {
-                    setStartUponTemperatureAlarmEnable(true);
-                }
-
-                SetMissionResolution(channel: 0, resolution: 0.0625, newMissionReg);
-
-                SetClockRunEnable(true);
-
-                EnableChannels(0, true);
-
-                // sample in 
-                if(sampleRate % 60 == 0x00)
-                {
-                    sampleRate = (sampleRate / 60) & 0x3FFF;
-
-                    SetSampleRateType(false);
+                    SetSampleRate(sampleRate);
                 }
                 else
                 {
-                    SetSampleRateType(true);
+                    throw new Exception("Erro, período de leitura inválido");
                 }
 
-                SetSampleRate(sampleRate);
+                // set mission resolution
+                SetMissionResolution(0, 0.0625, newMission);
 
-                SetClock(true);
 
-                Console.WriteLine();
 
-                for(int i = 0; i < newMissionReg.Length - 1; i++)
-                {
-                    Console.Write("{0:X2}-", newMissionReg[i]);
-                }
-                Console.WriteLine();
-                WriteDevice(newMissionReg);
 
             }
             catch
             {
 
             }
+            Console.WriteLine("newMission");
+            for (int i = 0; i < newMission.Length - 1; i++)
+            {
+
+                Console.Write("{0:X2}-", newMission[i]);
+            }
+
         }
 
         public void WriteDevice(byte[] writeBuffer)
@@ -418,7 +395,14 @@ namespace Ibutton_CS.Container
 
             if(channel == 0x00)
             {
-                SetFlag(0x213, 0x04, resolution == 0.0625 ? true : false, state);
+                if(resolution != 0.0625 && resolution != 0.5)
+                {
+                    throw new Exception("Invalid mission resolution");
+                }
+                else
+                {
+                    SetFlag(0x213, 0x04, resolution == 0.0625 ? true : false, newMission);
+                }
             }
             else
             {
@@ -432,12 +416,17 @@ namespace Ibutton_CS.Container
         {
             byte sampleRateLow;
             byte sampleRateHigh;
+            
+            if(sampleRate <= 0)
+            {
+                sampleRate = 300;
+            }
 
             sampleRateLow = (byte)(sampleRate & 0xFF);
-            sampleRateHigh = (byte)((sampleRate >> 0x04) & 0x00FF);
+            sampleRateHigh = (byte)((sampleRate & 0xFF00) >> 0x04 );
 
-            SetFlag(0x206, sampleRateLow, true, newMissionReg);
-            SetFlag(0x207, sampleRateHigh, true, newMissionReg);
+            SetFlag(0x206, sampleRateLow, true, newMission);
+            SetFlag(0x207, sampleRateHigh, true, newMission);
         }
 
         public void SetSampleRateType(bool sampleRateIsMinutes)
@@ -475,8 +464,9 @@ namespace Ibutton_CS.Container
             
             for (int i = 0; i <= timeHex.Length - 1; i++)
             {
-                SetFlag(0x200 + i, timeHex[i], true, newMissionReg);
-                Console.Write("{0:X2}-", timeHex[i]);
+                SetFlag(0x200 + i, timeHex[i], true, newMission);
+
+                // Console.Write("{0:X2}-",timeHex[i])
             }
         }
 
