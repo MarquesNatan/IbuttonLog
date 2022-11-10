@@ -18,6 +18,7 @@ namespace Ibutton_CS.Container
     public class myContainer
     {
         PortAdapter portAdapter = null;
+        byte[] deviceAddress = new byte[8];
 
         Device myDevice = new Device();
         byte[] newMissionReg = null;
@@ -29,7 +30,7 @@ namespace Ibutton_CS.Container
             try
             {
                 portAdapter = AccessProvider.GetAdapter("{DS9490}", "USB1");
-                byte[] deviceAddress = new byte[8];
+                
 
                 portAdapter.BeginExclusive(true);
 
@@ -346,7 +347,7 @@ namespace Ibutton_CS.Container
 
                 int result = portAdapter.GetByte();
 
-                Console.WriteLine();
+                ReadScratchpad();
 
             }
             catch (Exception e)
@@ -355,6 +356,69 @@ namespace Ibutton_CS.Container
             }
 
            
+        }
+
+        public byte[] ReadScratchpad()
+        {
+            byte[] rawbuffer = new byte[32 + 3];
+
+            rawbuffer[0] = 0xCC;
+            rawbuffer[1] = 0xAA;
+
+            try
+            {
+                portAdapter.Reset();
+                portAdapter.DataBlock(rawbuffer, 0, 2);
+
+                byte[] result = portAdapter.GetBlock(3);
+
+                if (result[0] != 0x00 || result[1] != 0x02 || result[2] != 0x1F) {
+                    throw new Exception("invalid scratchpad memory");
+                }
+
+                byte[] scratchpad = portAdapter.GetBlock(32);
+
+                Console.WriteLine();
+                for (int i = 0; i <= scratchpad.Length - 1; i++) {
+                    if (scratchpad[i] != newMission[i]) {
+                        throw new Exception("Bad mission register");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+            return rawbuffer;
+        }
+
+        public void CopyScratchpadToMemory()
+        {
+            byte[] rawBuffer = new byte[16];
+
+            rawBuffer[0] = 0xCC;
+            rawBuffer[1] = 0x66;
+            rawBuffer[2] = 0x0C;
+            rawBuffer[3] = 0x99;
+
+            // TA1 AND TA2
+            rawBuffer[1] = 0x00;
+            rawBuffer[1] = 0x02;
+            rawBuffer[1] = 0x1F;
+
+
+
+            try
+            {
+                portAdapter.Reset();
+
+            }
+            catch(Exception e)
+            {
+
+            }
+
         }
 
         public void StopMission(PortAdapter portAdapter)
