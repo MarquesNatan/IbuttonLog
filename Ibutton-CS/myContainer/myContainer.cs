@@ -397,43 +397,42 @@ namespace Ibutton_CS.Container
 
         public void CopyScratchpadToMemory()
         {
-            byte[] rawBuffer = new byte[20];
+            byte[] buffer = new byte[20];
+            int address = 0x200;
 
-            rawBuffer[0] = 0x66;
-            rawBuffer[1] = 0x0C;
-            rawBuffer[2] = 0x99;
+            buffer[0] = 0x66;        // XPC Command
+            buffer[1] = 0x0C;        // Command length
+            buffer[2] = 0x99;        // Copy ScratchPad commnad
 
-            // TA1 AND TA2
-            rawBuffer[3] = 0x00;
-            rawBuffer[4] = 0x02;
-            rawBuffer[5] = 0x1F;
+            // TA1 and TA2
+            buffer[3] = (byte)(address & 0xFF);
+            buffer[4] = (byte)(((address & 0xFFFF) >> 8) & 0xFF);
+            buffer[5] = (byte)((address + 32 - 1) & 0x1F);
 
             // Dummy password
-            rawBuffer[6] = 0xFF;
-            rawBuffer[7] = 0xFF;
-            rawBuffer[8] = 0xFF;
-            rawBuffer[9] = 0xFF;
-            rawBuffer[10] = 0xFF;
-            rawBuffer[11] = 0xFF;
-            rawBuffer[12] = 0xFF;
-            rawBuffer[13] = 0xFF;
+            buffer[6] = 0xFF;
+            buffer[7] = 0xFF;
+            buffer[8] = 0xFF;
+            buffer[9] = 0xFF;
+            buffer[10] = 0xFF;
+            buffer[11] = 0xFF;
+            buffer[12] = 0xFF;
+            buffer[13] = 0xFF;
 
             // Release bytes
-            rawBuffer[14] = 0xFF;
-            rawBuffer[15] = 0xFF;
+            buffer[14] = (byte)0xFF;
+            buffer[15] = (byte)0xFF;
 
-            try
-            {
-
+            try {
                 portAdapter.SelectDevice(deviceAddress, 0);
 
-                portAdapter.Reset();
-                portAdapter.DataBlock(rawBuffer, 0, 16);
+                portAdapter.DataBlock(buffer, 0, 16);
 
-                Console.WriteLine(CRC16.Compute(rawBuffer, 0, 16, 0));
-                if(CRC16.Compute(rawBuffer, 0, 16, 0) != 0x0000B001)
+                Console.WriteLine("{0:X4}", CRC16.Compute(buffer, 0, 16, 0));
+
+                if(CRC16.Compute(buffer, 0, 16, 0) != 0x0000B001)
                 {
-                    throw new Exception("\nCopy Scratchpad fails... Invalid CRC16 read from device, block:" + Convert.ToHexString(rawBuffer));
+                    throw new Exception("\nInvalid CRC16 read from device, Block: " + Convert.ToHexString(buffer));
                 }
 
                 portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
@@ -445,7 +444,7 @@ namespace Ibutton_CS.Container
 
                 int count = 0;
                 byte result = 0;
-
+                // 66 0C 99 00 02 1F FF FF FF FF FF FF FF FF FF FF
                 do {
 
                     result = (byte)portAdapter.GetByte();
