@@ -8,7 +8,7 @@ namespace Ibutton_CS
         static void Main(string[] args)
         {
             myContainer container = new myContainer();
-            container.myContainer_StopMission();
+            container.FunctionTest();
         }
     }
 }

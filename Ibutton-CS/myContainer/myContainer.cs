@@ -1,17 +1,10 @@
 ﻿using System;
-using System.Data.SqlTypes;
-using System.Diagnostics.SymbolStore;
-using System.Net;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Runtime.CompilerServices;
-using System.Security.AccessControl;
+using System.Data.Common;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
 
 using Ibutton_CS.DeviceFunctions;
-using Ibutton_CS.HardwareMap;
 
 namespace Ibutton_CS.Container
 {
@@ -24,9 +17,8 @@ namespace Ibutton_CS.Container
         byte[] newMissionReg = null;
         byte[] newMission = new byte[25 + 7];
 
-        public void myContainer_StopMission()
+        public void FunctionTest()
         {
-
             try
             {
                 portAdapter = AccessProvider.GetAdapter("{DS9490}", "USB1");
@@ -67,7 +59,7 @@ namespace Ibutton_CS.Container
                             portAdapter.SelectDevice(deviceAddress, 0);
                             // StopMission(portAdapter);
                             // ClearMemoryLog(portAdapter);
-                            StartNewMission(portAdapter);
+                             StartNewMission(portAdapter);
                             // ReadResultPage(portAdapter, 0);
                         }
 
@@ -219,12 +211,49 @@ namespace Ibutton_CS.Container
                 StartMission(true);
 
             }
-            catch
+            catch (Exception e)
             {
+                Console.WriteLine(e.Message);
+            }
+        }
 
+        public void StartMission(bool missionState) {
+            if (missionState) {
+                SetFlag(0x213, 0x01, missionState, newMission);
+            }
+            else {
+                SetFlag(0x213, 0x01, false, newMission);
             }
 
+            try {
+                byte[] commandPacket = new byte[32 + 5];
 
+                commandPacket[0] = 0x0F;
+                commandPacket[1] = 0x00;
+                commandPacket[2] = 0x02;
+
+                commandPacket[35] = 0xFF;
+                commandPacket[36] = 0xFF;
+
+                Array.Copy(newMission, 0, commandPacket, 3, newMission.Length);
+
+                portAdapter.DataBlock(commandPacket, 0, commandPacket.Length);
+
+                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001) {
+
+                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(commandPacket));
+                }
+
+                int result = portAdapter.GetByte();
+
+                ReadScratchpad();
+
+                CopyScratchpadToMemory();
+
+            }
+            catch (Exception e) {
+                Console.WriteLine(e.Message);
+            }
         }
 
         public void WriteDevice(byte[] writeBuffer)
@@ -315,49 +344,6 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void StartMission(bool missionState)
-        {
-            if(missionState)
-            {
-                SetFlag(0x213, 0x01, missionState, newMission);
-            }
-            else
-            {
-                SetFlag(0x213, 0x01, false, newMission);
-            }
-
-            try {
-                byte[] commandPacket = new byte[32 + 5];
-
-                commandPacket[0] = 0x0F;
-                commandPacket[1] = 0x00;
-                commandPacket[2] = 0x02;
-
-                commandPacket[35] = 0xFF;
-                commandPacket[36] = 0xFF;
-
-                Array.Copy(newMission, 0, commandPacket, 3, newMission.Length);
-
-                portAdapter.DataBlock(commandPacket, 0, commandPacket.Length);
-
-                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001) {
-
-                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(commandPacket));
-                }
-
-                int result = portAdapter.GetByte();
-
-                ReadScratchpad();
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-
-           
-        }
-
         public byte[] ReadScratchpad()
         {
             byte[] rawbuffer = new byte[32 + 3];
@@ -372,18 +358,34 @@ namespace Ibutton_CS.Container
 
                 byte[] result = portAdapter.GetBlock(3);
 
-                if (result[0] != 0x00 || result[1] != 0x02 || result[2] != 0x1F) {
+                if (result[0] != 0x00 || result[1] != 0x02 || result[2] != 0x1F)
+                {
                     throw new Exception("invalid scratchpad memory");
                 }
 
                 byte[] scratchpad = portAdapter.GetBlock(32);
 
                 Console.WriteLine();
-                for (int i = 0; i <= scratchpad.Length - 1; i++) {
-                    if (scratchpad[i] != newMission[i]) {
+                for (int i = 0; i <= scratchpad.Length - 1; i++)
+                {
+                    if (scratchpad[i] != newMission[i])
+                    {
                         throw new Exception("Bad mission register");
                     }
                 }
+
+            #if DEBUG
+                Console.WriteLine("\nScratchpad");
+                for(int i = 0; i < scratchpad.Length - 1; i++) {
+                    Console.Write("{0:X2}-", scratchpad[i]);
+                }
+
+                Console.WriteLine("\nNew Mission");
+                for (int i = 0; i < newMission.Length - 1; i++) {
+                    Console.Write("{0:X2}-", newMission[i]);
+                }
+            #endif // DEBUG
+
             }
             catch (Exception e)
             {
@@ -395,28 +397,75 @@ namespace Ibutton_CS.Container
 
         public void CopyScratchpadToMemory()
         {
-            byte[] rawBuffer = new byte[16];
+            byte[] rawBuffer = new byte[20];
 
-            rawBuffer[0] = 0xCC;
-            rawBuffer[1] = 0x66;
-            rawBuffer[2] = 0x0C;
-            rawBuffer[3] = 0x99;
+            rawBuffer[0] = 0x66;
+            rawBuffer[1] = 0x0C;
+            rawBuffer[2] = 0x99;
 
             // TA1 AND TA2
-            rawBuffer[1] = 0x00;
-            rawBuffer[1] = 0x02;
-            rawBuffer[1] = 0x1F;
+            rawBuffer[3] = 0x00;
+            rawBuffer[4] = 0x02;
+            rawBuffer[5] = 0x1F;
 
+            // Dummy password
+            rawBuffer[6] = 0xFF;
+            rawBuffer[7] = 0xFF;
+            rawBuffer[8] = 0xFF;
+            rawBuffer[9] = 0xFF;
+            rawBuffer[10] = 0xFF;
+            rawBuffer[11] = 0xFF;
+            rawBuffer[12] = 0xFF;
+            rawBuffer[13] = 0xFF;
 
+            // Release bytes
+            rawBuffer[14] = 0xFF;
+            rawBuffer[15] = 0xFF;
 
             try
             {
+
+                portAdapter.SelectDevice(deviceAddress, 0);
+
                 portAdapter.Reset();
+                portAdapter.DataBlock(rawBuffer, 0, 16);
 
+                Console.WriteLine(CRC16.Compute(rawBuffer, 0, 16, 0));
+                if(CRC16.Compute(rawBuffer, 0, 16, 0) != 0x0000B001)
+                {
+                    throw new Exception("\nCopy Scratchpad fails... Invalid CRC16 read from device, block:" + Convert.ToHexString(rawBuffer));
+                }
+
+                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+                portAdapter.GetByte();
+
+                Thread.Sleep(5);
+
+                portAdapter.SetPowerNormal();
+
+                int count = 0;
+                byte result = 0;
+
+                do {
+
+                    result = (byte)portAdapter.GetByte();
+
+                } while ((result != 0xAA) && (result != 0x55) && (count++ < 50));
+
+                if ((result != 0xAA) && (result != 0x55))
+                {
+                    throw new Exception("myContainer53 - XPC Copy Scratchpad failed. Return Code " + Convert.ToString(result));
+                }
+                #if DEBUG
+                    else
+                    {
+                        Console.WriteLine("Copy complete");
+                    }
+                #endif // DEBUG
             }
-            catch(Exception e)
+            catch (Exception e)
             {
-
+                Console.WriteLine(e.Message);
             }
 
         }
@@ -458,8 +507,6 @@ namespace Ibutton_CS.Container
                 if (CRC16.Compute(buffer, 0, 13, 0) != 0x0000B001)
                 {
                     throw new Exception("Invalid CRC16 read from device.");
-                    
-                    
                 }
 
                 portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
@@ -476,18 +523,21 @@ namespace Ibutton_CS.Container
                 if ((result != (byte)0xAA) && (result != (byte)0x55))
                 {
                     throw new Exception(
-                       "OneWireContainer53-XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
+                       "myContainer53 - XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
                 }
+                #if DEBUG
+                    else {
+                        Console.WriteLine(@"
+                                    **************************************
+                                    *      MISSÃO PARADA COM SUCESSO     *
+                                    **************************************");
+                    }
+                #endif // DEBUG
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-
-            Console.WriteLine(@"
-                                **************************************
-                                *      MISSÃO PARADA COM SUCESSO     *
-                                **************************************");
         }
 
         public void SetMissionStartDelay(int startDelay)
