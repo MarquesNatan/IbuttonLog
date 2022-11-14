@@ -80,7 +80,7 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void ClearMemoryLog(PortAdapter portAdapter)
+        public void ClearMemoryLog(bool memoryLog)
         {
             byte[] buffer = new byte[20];
             Console.WriteLine();
@@ -107,10 +107,13 @@ namespace Ibutton_CS.Container
 
             try
             {
+                portAdapter.Reset();
+                portAdapter.SelectDevice(deviceAddress, 0);
+
                 portAdapter.DataBlock(buffer, 0, 14);
+
                 if (CRC16.Compute(buffer, 0, 14, 0) != 0x0000B001)
                 {
-                    // throw new Exception("Invalid CRC16 read from device.");
                     throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(buffer));
                 }
             }catch(Exception e)
@@ -137,12 +140,14 @@ namespace Ibutton_CS.Container
             {
                 Console.WriteLine($"result: {result}");
                 throw new Exception(
-                   "OneWireContainer53-Clear Memory failed. Return Code " + Convert.ToString((byte)result));
+                   "OneWireContainer53- XPC Clear Memory failed. Return Code " + Convert.ToString((byte)result));
             }
-            else{
-                Console.WriteLine("Resultado: {0:X2}", result);
-                Console.WriteLine("Log de Missão limpo com sucesso!");
-            }
+            #if DEBUG
+                else{
+                    Console.WriteLine("Clear memory result: {0:X2}.", result);
+                    Console.WriteLine("Log memory successfully cleared.");
+                }
+            #endif // DEBUG
 
             Console.WriteLine("_____________________ End ClearMemory _____________________");
             Console.WriteLine();
@@ -151,7 +156,7 @@ namespace Ibutton_CS.Container
         public void StartNewMission(PortAdapter portAdapter)
         {
 
-            int sampleRate = 600;
+            int sampleRate = 1200;
 
             byte alarmTempLow = 0x00;           // low Alarm 51°
             byte alarmTempHigh = 0x0A;          // High Alarm 40°
@@ -208,8 +213,9 @@ namespace Ibutton_CS.Container
                 newMission[31] = 0xFF;
                 // newMission[32] = 0xFF;
 
-                StartMission(true);
+                MemoryScratchpadConfig(true);
 
+                StartMission(true);
             }
             catch (Exception e)
             {
@@ -217,15 +223,10 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void StartMission(bool missionState) {
-            if (missionState) {
-                SetFlag(0x213, 0x01, missionState, newMission);
-            }
-            else {
-                SetFlag(0x213, 0x01, false, newMission);
-            }
-
-            try {
+        public void MemoryScratchpadConfig(bool missionState)
+        {
+            try
+            {
                 byte[] commandPacket = new byte[32 + 5];
 
                 commandPacket[0] = 0x0F;
@@ -239,7 +240,8 @@ namespace Ibutton_CS.Container
 
                 portAdapter.DataBlock(commandPacket, 0, commandPacket.Length);
 
-                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001) {
+                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001)
+                {
 
                     throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(commandPacket));
                 }
@@ -251,7 +253,8 @@ namespace Ibutton_CS.Container
                 CopyScratchpadToMemory();
 
             }
-            catch (Exception e) {
+            catch (Exception e)
+            {
                 Console.WriteLine(e.Message);
             }
         }
@@ -428,12 +431,15 @@ namespace Ibutton_CS.Container
 
                 portAdapter.DataBlock(buffer, 0, 16);
 
-                Console.WriteLine("{0:X4}", CRC16.Compute(buffer, 0, 16, 0));
-
                 if(CRC16.Compute(buffer, 0, 16, 0) != 0x0000B001)
                 {
-                    throw new Exception("\nInvalid CRC16 read from device, Block: " + Convert.ToHexString(buffer));
+                    throw new Exception("\nInvalid CRC16 read from device, Block: " + Convert.ToHexString(buffer) + "\n");
                 }
+                #if DEBUG
+                    else{
+                        Console.WriteLine("\nCorrect CRC16 value read from device\n");
+                    }
+                #endif // DEBUG
 
                 portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
                 portAdapter.GetByte();
@@ -444,7 +450,7 @@ namespace Ibutton_CS.Container
 
                 int count = 0;
                 byte result = 0;
-                // 66 0C 99 00 02 1F FF FF FF FF FF FF FF FF FF FF
+
                 do {
 
                     result = (byte)portAdapter.GetByte();
@@ -453,12 +459,95 @@ namespace Ibutton_CS.Container
 
                 if ((result != 0xAA) && (result != 0x55))
                 {
-                    throw new Exception("myContainer53 - XPC Copy Scratchpad failed. Return Code " + Convert.ToString(result));
+                    throw new Exception("myContainer53 - XPC Copy Scratchpad failed. Return Code " + Convert.ToString(result) + "\n");
                 }
                 #if DEBUG
                     else
                     {
-                        Console.WriteLine("Copy complete");
+                        Console.WriteLine("\nCopy complete");
+                    }
+                #endif // DEBUG
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+
+        }
+
+        public void StartMission(bool startmission)
+        {
+            byte[] rawBuffer = new byte[20];
+
+            // Set use log memory bit in register: Mission Control
+            if (startmission)
+            {
+                SetFlag(0x213, 0x01, startmission, newMission);
+            }
+
+            ClearMemoryLog(true);
+
+            rawBuffer[0] = 0x66;
+            rawBuffer[1] = 0x09;
+            rawBuffer[2] = 0xDD;
+
+            // Dummy password
+            rawBuffer[3] = 0xFF;
+            rawBuffer[4] = 0xFF;
+            rawBuffer[5] = 0xFF;
+            rawBuffer[6] = 0xFF;
+            rawBuffer[7] = 0xFF;
+            rawBuffer[8] = 0xFF;
+            rawBuffer[9] = 0xFF;
+            rawBuffer[10] = 0xFF;
+
+            // Release bytes
+            rawBuffer[11] = 0xFF;
+            rawBuffer[12] = 0xFF;
+
+            try
+            {
+                portAdapter.Reset();
+                portAdapter.SelectDevice(deviceAddress, 0);
+
+                portAdapter.DataBlock(rawBuffer, 0, 13);
+
+                if(CRC16.Compute(rawBuffer, 0, 13, 0) != 0x0000B001)
+                {
+                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(rawBuffer));
+                }
+                #if DEBUG
+                    else
+                    {
+                        Console.WriteLine("Correct buffer sent to device");
+                    }
+                #endif // DEBUG
+
+                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+                portAdapter.GetByte();
+
+                Thread.Sleep(20);
+
+                portAdapter.SetPowerNormal();
+
+                int count = 0;
+                byte result = 0;
+
+                do
+                {
+
+                    result = (byte)portAdapter.GetByte();
+
+                } while ((result != 0xAA) && (result != 0x55) && (count++ < 50));
+
+                if ((result != 0xAA) && (result != 0x55))
+                {
+                    throw new Exception("myContainer53 - XPC Start Mission failed. Result Code: " + result.ToString() + "\n");
+                }
+                #if DEBUG
+                    else
+                    {
+                        Console.WriteLine("\nMission is running");
                     }
                 #endif // DEBUG
             }
