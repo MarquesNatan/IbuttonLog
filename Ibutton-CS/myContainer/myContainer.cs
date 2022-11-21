@@ -1,5 +1,11 @@
 ﻿using System;
 using System.Data.Common;
+using System.Diagnostics.Tracing;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
 using DalSemi.Utils;
@@ -54,13 +60,9 @@ namespace Ibutton_CS.Container
                         Console.WriteLine();
 
                         if (deviceAddress[0].ToString() == "83")
-                        {
-
-                            portAdapter.SelectDevice(deviceAddress, 0);
-                            // StopMission(portAdapter);
-                            // ClearMemoryLog(portAdapter);
-                             StartNewMission(portAdapter);
-                            // ReadResultPage(portAdapter, 0);
+                        {   
+                            IButton_ClearMemoryLog();
+                            StartNewMission(portAdapter);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -80,77 +82,207 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void ClearMemoryLog(bool memoryLog)
+        public void IButton_ClearMemoryLog()
         {
-            byte[] buffer = new byte[20];
-            Console.WriteLine();
-            Console.WriteLine("_____________________ Start ClearMemory _____________________");
 
-            buffer[0] = 0x66;
-            buffer[1] = 0x0A;
-            buffer[2] = 0x96;
-            buffer[3] = 0x01;
-            
-            // dummy password
-            buffer[4] = 0xFF;
-            buffer[5] = 0xFF;
-            buffer[6] = 0xFF;
-            buffer[7] = 0xFF;
-            buffer[8] = 0xFF;
-            buffer[9] = 0xFF;
-            buffer[10] = 0xFF;
-            buffer[11] = 0xFF;
+            byte[] commands = new byte[] { 0x66, 0x0A, 0x96, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            byte releasebyte = 0xFF;
 
-            // release byte
-            buffer[12] = 0xFF;
-            buffer[13] = 0xFF;
+            MatchRom(deviceAddress);
 
-            try
-            {
-                portAdapter.Reset();
-                portAdapter.SelectDevice(deviceAddress, 0);
+            try {
 
-                portAdapter.DataBlock(buffer, 0, 14);
+                Console.Write("Clear memory command: ");
+                WriteBytes(commands);
 
-                if (CRC16.Compute(buffer, 0, 14, 0) != 0x0000B001)
-                {
-                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(buffer));
+                byte[] crc = new byte[2];
+                crc = ReadBytes(2);
+
+                Console.WriteLine("CRC: {0:X2}\n", Convert.ToHexString(crc));
+
+               
+                WriteByte(releasebyte);
+
+                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
+
+                WriteByte(releasebyte);
+
+                Thread.Sleep(1500);
+
+                portAdapter.SetPowerNormal();
+
+                int status;
+                byte count = 0x00;
+
+                do {
+
+                    status = portAdapter.GetByte();
+
+                } while ((status != 0xAA) && (status != 0x55) && (count++ < 100));
+
+                if ((status != 0xAA) && (status != 0x55)) {
+                    throw new Exception("Erro durante a limpeza de mémoria. Code " + Convert.ToString(status) + "\n");
                 }
-            }catch(Exception e)
-            {
+                else {
+                    Console.WriteLine("Mémoria de log limpa com sucesso! status code: {0:X2}", status);
+                }
+            }
+            catch (Exception e) {
                 Console.WriteLine(e.Message);
             }
 
-            portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
-            int result = portAdapter.GetByte();
+        }
 
-            Thread.Sleep(1500);
+        public void WriteMissionScratchpad(byte[] param)
+        {
+            
+            MatchRom(deviceAddress);
+            byte[] command = new byte[3 + 25 + 7];
+            
+            command[0] = 0x0F;
+            command[1] = 0x00;
+            command[2] = 0x02;
 
-            portAdapter.SetPowerNormal();
-            int cnt = 0;
+            Array.Copy(param, 0, command, 3, param.Length);
 
-            // Read result byte
-            do
+            try
             {
-                result = (byte)portAdapter.GetByte();
+                Console.WriteLine("\n\npacote enviado: {0}\n", Convert.ToHexString(command));
+                WriteBytes(command);
 
-            } while (result != 0xAA && result != 0x55 && (cnt++ < 50));
+                byte[] crc = new byte[2];
+                crc = ReadBytes(2);
+                Console.WriteLine("CRC: {0}", Convert.ToHexString(crc));
 
-            if ((result != 0xAA) && (result != 0x55))
-            {
-                Console.WriteLine($"result: {result}");
-                throw new Exception(
-                   "OneWireContainer53- XPC Clear Memory failed. Return Code " + Convert.ToString((byte)result));
+                ReadScratchpad();
+                CopyScratchpad();
+
+                StartMission();
             }
-            #if DEBUG
-                else{
-                    Console.WriteLine("Clear memory result: {0:X2}.", result);
-                    Console.WriteLine("Log memory successfully cleared.");
-                }
-            #endif // DEBUG
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
 
-            Console.WriteLine("_____________________ End ClearMemory _____________________");
-            Console.WriteLine();
+        public byte[] ReadScratchpad()
+        {
+            byte[] command = new byte[] { 0xAA};
+            byte[] address = new byte[3];
+            byte[] scratchpadmemory = new byte[32];
+
+            try {
+                MatchRom(deviceAddress);
+
+                WriteBytes(command);
+
+                address = ReadBytes(3);
+
+                if (address[0] != 0x00 || address[1] != 0x02 || address[2] != 0x1F) {
+                    throw new Exception("Erro - read Scratchpad, resposta não esperada.");
+                }
+                else {
+                    scratchpadmemory = ReadBytes(32);
+
+                    for(int i = 0; i < scratchpadmemory.Length - 1; i++) {
+                        Console.Write("{0:X2} ", scratchpadmemory[i]);
+                    }
+
+                    return scratchpadmemory;
+                }
+
+            }catch(Exception e) {
+                Console.WriteLine(e.Message);
+            }
+
+            return null;
+        }
+
+        public void CopyScratchpad() {
+            byte[] command = new byte[] { 0x66, 0x0C, 0X99, 0x00, 0x02, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            byte[] crc = new byte[2];
+
+            byte releaseByte = 0xFF;
+
+            try {
+                MatchRom(deviceAddress);
+
+                WriteBytes(command);
+
+                crc = ReadBytes(2);
+                Console.WriteLine("Copy scaratchpad CRC: {0}", Convert.ToHexString(crc));
+
+                WriteByte(releaseByte);
+
+                Thread.Sleep(15 + 2000);
+
+                WriteByte(releaseByte);
+
+                int status;
+                byte count = 0x00;
+
+                do {
+
+                    status = portAdapter.GetByte();
+
+                } while ((status != 0xAA) && (status != 0x55) && (count++ < 100));
+
+                if ((status != 0xAA) && (status != 0x55)) {
+                    throw new Exception("Erro durante a operação de cópia. Code " + Convert.ToString(status) + "\n");
+                }
+                else {
+                    Console.WriteLine("Operação de cópia realizada com sucesso! status code: {0:X2}", status);
+                }
+
+            }
+            catch(Exception e) {
+                Console.WriteLine(e.Message);
+            }
+        }
+
+        public void StartMission()
+        {
+            byte[] command = new byte[] { 0x66, 0x09, 0xDD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            byte[] crc = new byte[2];
+
+            byte releaseByte = 0xFF;
+
+            try {
+                MatchRom(deviceAddress);
+
+                WriteBytes(command);
+
+                crc = ReadBytes(2);
+                Console.WriteLine("Start Mission CRC: {0}", Convert.ToHexString(crc));
+
+                WriteByte(releaseByte);
+
+                Thread.Sleep(15);
+
+                WriteByte(releaseByte);
+
+                int status;
+                byte count = 0x00;
+
+                do {
+
+                    status = portAdapter.GetByte();
+
+                } while ((status != 0xAA) && (status != 0x55) && (count++ < 100));
+
+                if ((status != 0xAA) && (status != 0x55)) {
+                    throw new Exception("Erro durante a operação de cópia. Code " + Convert.ToString(status) + "\n");
+                }
+                else {
+                    Console.WriteLine("Operação de cópia realizada com sucesso! status code: {0:X2}", status);
+                }
+
+                portAdapter.Reset();
+
+            }
+            catch (Exception e) {
+                Console.WriteLine(e.Message);
+            }
         }
 
         public void StartNewMission(PortAdapter portAdapter)
@@ -170,463 +302,144 @@ namespace Ibutton_CS.Container
                 newMission[i] = 0x00;
             }
 
-            try
+            // set mission time
+            SetTime(true);
+
+            if (sampleRate % 60 == 0x00)
             {
-                // set mission time
-                SetTime(true);
-
-                if (sampleRate % 60 == 0x00)
-                {
-                    sampleRate = (sampleRate / 60) & 0x3FFF;
-                    SetSampleRateType(false);
-                }
-                else
-                {
-                    SetSampleRateType(true);
-                    throw new Exception("Erro, período de leitura inválido");
-                }
-
-                SetSampleRate(sampleRate);
-
-                SetAlarms(alarmTempLow, false, alarmTempHigh, true);
-
-                // Enable Clock device
-                SetClockRunEnable(true);
-
-                if(SUTAMode)
-                {
-                    SetStartUponTemperatureAlarmEnable(true);
-                }
-
-                // set mission resolution
-                SetMissionResolution(0, 0.0625, newMission);
-
-                SetMissionStartDelay(missionStartDelay);
-
-                newMission[25] = 0xFF;
-                newMission[26] = 0xFF;
-                newMission[27] = 0xFF;
-                newMission[28] = 0xFF;
-
-                newMission[29] = 0xFF;
-                newMission[30] = 0xFF;
-                newMission[31] = 0xFF;
-                // newMission[32] = 0xFF;
-
-                MemoryScratchpadConfig(true);
-
-                StartMission(true);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-        }
-
-        public void MemoryScratchpadConfig(bool missionState)
-        {
-            try
-            {
-                byte[] commandPacket = new byte[32 + 5];
-
-                commandPacket[0] = 0x0F;
-                commandPacket[1] = 0x00;
-                commandPacket[2] = 0x02;
-
-                commandPacket[35] = 0xFF;
-                commandPacket[36] = 0xFF;
-
-                Array.Copy(newMission, 0, commandPacket, 3, newMission.Length);
-
-                portAdapter.DataBlock(commandPacket, 0, commandPacket.Length);
-
-                if (CRC16.Compute(commandPacket, 0, 32 + 5, 0) != 0x0000B001)
-                {
-
-                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(commandPacket));
-                }
-
-                int result = portAdapter.GetByte();
-
-                ReadScratchpad();
-
-                CopyScratchpadToMemory();
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-        }
-
-        public void WriteDevice(byte[] writeBuffer)
-        {
-            int startAddress = 0x00;
-            bool updateRTC = false;
-            int bufferLength = 32 - startAddress;
-
-            if (updateRTC != false)
-            {
-                startAddress = 0x06;
-                bufferLength = 32 - startAddress;
-            }
-
-
-            int offset = startAddress + bufferLength;
-
-            if ((offset & 0x1F) > 0x00)
-            {
-                // Verificar se a senha está correta
-
-                throw new Exception("The password will be replaced, are you sure?");
+                sampleRate = (sampleRate / 60) & 0x3FFF;
+                SetSampleRateType(false);
             }
             else
             {
-                // A senha não será sobreescrita
-                WriteScratchpad(writeBuffer, startAddress, offset, bufferLength);
-
+                SetSampleRateType(true);
+                throw new Exception("Erro, período de leitura inválido");
             }
 
+            SetSampleRate(sampleRate);
+
+            SetAlarms(alarmTempLow, false, alarmTempHigh, true);
+
+            // Enable Clock device
+            SetClockRunEnable(true);
+
+            if(SUTAMode)
+            {
+                SetStartUponTemperatureAlarmEnable(true);
+            }
+
+            // set mission resolution
+            SetMissionResolution(0, 0.0625, newMission);
+
+            SetMissionStartDelay(missionStartDelay);
+
+            newMission[25] = 0xFF;
+            newMission[26] = 0xFF;
+            newMission[27] = 0xFF;
+            newMission[28] = 0xFF;
+
+            newMission[29] = 0xFF;
+            newMission[30] = 0xFF;
+            newMission[31] = 0xFF;
+
+            byte[] mission = new byte[] { 0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0xFC, 0x01, 0xC5, 0xFF, 0xFF, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            WriteMissionScratchpad(mission);
+
+            // StartMission(true);
         }
 
-        public void WriteScratchpad(byte[] writeBuffer, int startAddress, int offset, int length)
-        {
-            if ((startAddress + length) > 32)
-            {
-                throw new Exception("Write exceeds memory bank end");
-            }
+        public bool ResetOneWire(byte[] address) {
 
-            // 9F:00:00:00:10:28:C7:53
-            byte[] deviceAddress = new byte[] { 0x53, 0xC7, 0x28, 0x10, 0x00, 0x00, 0x00, 0x9F };
-
-            if (!portAdapter.SelectDevice(deviceAddress, 0))
-            {
-                throw new Exception("Select devie failed");
-            }
-
-            byte[] raw_buff = new byte[32 + 5];
-
-            raw_buff[0] = 0x0F;
-            // TA1 e TA2
-            raw_buff[1] = (byte)(startAddress & 0xFF);
-            raw_buff[2] = (byte)(((0x200 & 0xFFFF) >> 8) & 0xFF);
-
-            Array.Copy(writeBuffer, 0, raw_buff, 3, length);
-
-            for (int i = 0; i < raw_buff.Length - 1; i++)
-            {
-                Console.Write("{0:X2}-", raw_buff[i]);
-            }
-            Console.WriteLine();
-
-
-            if ((startAddress + length) % 32 == 0x00)
-            {
-                raw_buff[33] = (byte)0xFF;
-                raw_buff[34] = (byte)0xFF;
-            }
-
+            bool AddressIsPresent = false;
             try
             {
-                portAdapter.DataBlock(raw_buff, 0, length + 3 + 2);
+                if (address != null) {
+                    OWResetResult result = portAdapter.Reset();
 
-                if (CRC16.Compute(raw_buff, 0, length + 5, 0) != 0x0000B001)
+                    if ((result == OWResetResult.RESET_PRESENCE) || (result == OWResetResult.RESET_ALARM)) {
+                        AddressIsPresent = true;
+                    }
+                    else {
+                        AddressIsPresent = false;
+                    }
+                }
+            }
+            catch (Exception e) {
+                Console.WriteLine(e.Message);
+            }
+                return AddressIsPresent;
+        }
+
+        public void MatchRom(byte[] address)
+        {
+            // 53 C7 28 10 00 00 00 9F
+
+            if (ResetOneWire(address))
+            {
+                portAdapter.PutByte(0x55);
+
+                if(address.Length != 0x08)
                 {
-                    throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(raw_buff));
+                    throw new Exception("Erro no endereço do divice");
                 }
                 else
                 {
-                    Console.WriteLine("Device Mission Started!");
+                    portAdapter.DataBlock(address, 0, 8);
                 }
-                Console.WriteLine("TESTE 3");
+            }
+            else {
+                Console.WriteLine("Erro durante o reset, device não reconhecido!");
+            }
 
+        }
+       
+        public void WriteBytes(byte[] bytes)
+        {
+            for(int i = 0; i <=  bytes.Length - 1; i++) {
+                portAdapter.PutByte(bytes[i]);
+                Console.Write("{0:X2} ", bytes[i]);
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
+
+            Console.WriteLine();
         }
 
-        public byte[] ReadScratchpad()
-        {
-            byte[] rawbuffer = new byte[32 + 3];
-
-            rawbuffer[0] = 0xCC;
-            rawbuffer[1] = 0xAA;
-
-            try
-            {
-                portAdapter.Reset();
-                portAdapter.DataBlock(rawbuffer, 0, 2);
-
-                byte[] result = portAdapter.GetBlock(3);
-
-                if (result[0] != 0x00 || result[1] != 0x02 || result[2] != 0x1F)
-                {
-                    throw new Exception("invalid scratchpad memory");
-                }
-
-                byte[] scratchpad = portAdapter.GetBlock(32);
-
-                Console.WriteLine();
-                for (int i = 0; i <= scratchpad.Length - 1; i++)
-                {
-                    if (scratchpad[i] != newMission[i])
-                    {
-                        throw new Exception("Bad mission register");
-                    }
-                }
-
-            #if DEBUG
-                Console.WriteLine("\nScratchpad");
-                for(int i = 0; i < scratchpad.Length - 1; i++) {
-                    Console.Write("{0:X2}-", scratchpad[i]);
-                }
-
-                Console.WriteLine("\nNew Mission");
-                for (int i = 0; i < newMission.Length - 1; i++) {
-                    Console.Write("{0:X2}-", newMission[i]);
-                }
-            #endif // DEBUG
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-
-            return rawbuffer;
-        }
-
-        public void CopyScratchpadToMemory()
-        {
-            byte[] buffer = new byte[20];
-            int address = 0x200;
-
-            buffer[0] = 0x66;        // XPC Command
-            buffer[1] = 0x0C;        // Command length
-            buffer[2] = 0x99;        // Copy ScratchPad commnad
-
-            // TA1 and TA2
-            buffer[3] = (byte)(address & 0xFF);
-            buffer[4] = (byte)(((address & 0xFFFF) >> 8) & 0xFF);
-            buffer[5] = (byte)((address + 32 - 1) & 0x1F);
-
-            // Dummy password
-            buffer[6] = 0xFF;
-            buffer[7] = 0xFF;
-            buffer[8] = 0xFF;
-            buffer[9] = 0xFF;
-            buffer[10] = 0xFF;
-            buffer[11] = 0xFF;
-            buffer[12] = 0xFF;
-            buffer[13] = 0xFF;
-
-            // Release bytes
-            buffer[14] = (byte)0xFF;
-            buffer[15] = (byte)0xFF;
+        public void WriteByte(byte bytes) {
 
             try {
-                portAdapter.SelectDevice(deviceAddress, 0);
-
-                portAdapter.DataBlock(buffer, 0, 16);
-
-                if(CRC16.Compute(buffer, 0, 16, 0) != 0x0000B001)
-                {
-                    throw new Exception("\nInvalid CRC16 read from device, Block: " + Convert.ToHexString(buffer) + "\n");
-                }
-                #if DEBUG
-                    else{
-                        Console.WriteLine("\nCorrect CRC16 value read from device\n");
-                    }
-                #endif // DEBUG
-
-                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
-                portAdapter.GetByte();
-
-                Thread.Sleep(5);
-
-                portAdapter.SetPowerNormal();
-
-                int count = 0;
-                byte result = 0;
-
-                do {
-
-                    result = (byte)portAdapter.GetByte();
-
-                } while ((result != 0xAA) && (result != 0x55) && (count++ < 50));
-
-                if ((result != 0xAA) && (result != 0x55))
-                {
-                    throw new Exception("myContainer53 - XPC Copy Scratchpad failed. Return Code " + Convert.ToString(result) + "\n");
-                }
-                #if DEBUG
-                    else
-                    {
-                        Console.WriteLine("\nCopy complete");
-                    }
-                #endif // DEBUG
+                portAdapter.PutByte((int)bytes);
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-
-        }
-
-        public void StartMission(bool startmission)
-        {
-            byte[] rawBuffer = new byte[20];
-
-            // Set use log memory bit in register: Mission Control
-            if (startmission)
-            {
-                SetFlag(0x213, 0x01, startmission, newMission);
-            }
-
-            ClearMemoryLog(true);
-
-            rawBuffer[0] = 0x66;
-            rawBuffer[1] = 0x09;
-            rawBuffer[2] = 0xDD;
-
-            // Dummy password
-            rawBuffer[3] = 0xFF;
-            rawBuffer[4] = 0xFF;
-            rawBuffer[5] = 0xFF;
-            rawBuffer[6] = 0xFF;
-            rawBuffer[7] = 0xFF;
-            rawBuffer[8] = 0xFF;
-            rawBuffer[9] = 0xFF;
-            rawBuffer[10] = 0xFF;
-
-            // Release bytes
-            rawBuffer[11] = 0xFF;
-            rawBuffer[12] = 0xFF;
-
-            try
-            {
-                portAdapter.Reset();
-                portAdapter.SelectDevice(deviceAddress, 0);
-
-                portAdapter.DataBlock(rawBuffer, 0, 13);
-
-                if(CRC16.Compute(rawBuffer, 0, 13, 0) != 0x0000B001)
-                {
-                    throw new Exception("Invalid CRC16 read from device, block: " + Convert.ToHexString(rawBuffer));
-                }
-                #if DEBUG
-                    else
-                    {
-                        Console.WriteLine("Correct buffer sent to device");
-                    }
-                #endif // DEBUG
-
-                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
-                portAdapter.GetByte();
-
-                Thread.Sleep(20);
-
-                portAdapter.SetPowerNormal();
-
-                int count = 0;
-                byte result = 0;
-
-                do
-                {
-
-                    result = (byte)portAdapter.GetByte();
-
-                } while ((result != 0xAA) && (result != 0x55) && (count++ < 50));
-
-                if ((result != 0xAA) && (result != 0x55))
-                {
-                    throw new Exception("myContainer53 - XPC Start Mission failed. Result Code: " + result.ToString() + "\n");
-                }
-                #if DEBUG
-                    else
-                    {
-                        Console.WriteLine("\nMission is running");
-                    }
-                #endif // DEBUG
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-
-        }
-
-        public void StopMission(PortAdapter portAdapter)
-        {
-            byte[] buffer = new byte[20];
-            buffer[0] = (byte)0x66;
-            buffer[1] = 0x09;
-            buffer[2] = (byte)0xBB;
-
-            // Dummy password
-            buffer[3] = 0xFF;
-            buffer[4] = 0xFF;
-            buffer[5] = 0xFF;
-            buffer[6] = 0xFF;
-            buffer[7] = 0xFF;
-            buffer[8] = 0xFF;
-            buffer[9] = 0xFF;
-            buffer[10] = 0xFF;
-
-            // Release bytes
-            buffer[11] = (byte)0xFF;
-            buffer[12] = (byte)0xFF;
-
-            byte result;
-            int cnt = 0;
-
-            try
-            {
-                Console.WriteLine(@"
-                                ***************************
-                                *      PARANDO MISSÃO     *
-                                ***************************");
-
-                portAdapter.DataBlock(buffer, 0, 13);
-
-                // Compute CRC and verify it is correct
-                if (CRC16.Compute(buffer, 0, 13, 0) != 0x0000B001)
-                {
-                    throw new Exception("Invalid CRC16 read from device.");
-                }
-
-                portAdapter.StartPowerDelivery(OWPowerStart.CONDITION_AFTER_BYTE);
-                portAdapter.GetByte();
-
-                Thread.Sleep(6);
-
-                do
-                {
-                    result = (byte)portAdapter.GetByte();
-                }
-                while ((result != (byte)0xAA) && (result != (byte)0x55) && (cnt++ < 50));
-
-                if ((result != (byte)0xAA) && (result != (byte)0x55))
-                {
-                    throw new Exception(
-                       "myContainer53 - XPC Stop Mission failed. Return Code " + Convert.ToString((byte)result));
-                }
-                #if DEBUG
-                    else {
-                        Console.WriteLine(@"
-                                    **************************************
-                                    *      MISSÃO PARADA COM SUCESSO     *
-                                    **************************************");
-                    }
-                #endif // DEBUG
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
+            catch (Exception e) {
+                Console.WriteLine("Erro durante a escria do byte");
             }
         }
+
+        public byte[] ReadBytes(byte lenght) {
+
+            byte[] readbytes = new byte[lenght];
+
+            try {
+                readbytes = portAdapter.GetBlock(lenght);
+                return readbytes;
+            }
+            catch(Exception e) {
+                Console.WriteLine(e.Message);
+                return null;
+            }
+        }
+
+        public int ReadByte() {
+            int readbytes;
+
+            try {
+                readbytes = portAdapter.GetByte();
+                return readbytes;
+            }
+            catch (Exception e) {
+                Console.WriteLine(e.Message);
+                return 0xFF;
+            }
+        }
+
 
         public void SetMissionStartDelay(int startDelay)
         {
@@ -680,7 +493,7 @@ namespace Ibutton_CS.Container
                 }
                 else
                 {
-                    SetFlag(0x213, 0x04, resolution == 0.0625 ? true : false, newMission);
+                    SetFlag(0x213, 0x05, resolution == 0.0625 ? true : false, newMission);
                 }
             }
             else
@@ -744,8 +557,6 @@ namespace Ibutton_CS.Container
             for (int i = 0; i <= timeHex.Length - 1; i++)
             {
                 SetFlag(0x200 + i, timeHex[i], true, newMission);
-
-                // Console.Write("{0:X2}-",timeHex[i])
             }
         }
 
