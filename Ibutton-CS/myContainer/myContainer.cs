@@ -2,6 +2,7 @@
 using System.Data.Common;
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
+using System.Net.Security;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -30,15 +31,14 @@ namespace Ibutton_CS.Container
             {
                 portAdapter = AccessProvider.GetAdapter("{DS9490}", "USB1");
                 
-
                 portAdapter.BeginExclusive(true);
 
                 portAdapter.SetSearchAllDevices();
                 portAdapter.TargetAllFamilies();
 
                 portAdapter.Speed = OWSpeed.SPEED_REGULAR;
-                
-                // Get Device Address
+
+
                 if(portAdapter.GetFirstDevice(deviceAddress, 0))
                 {
                     int deviceIndex = 0;
@@ -60,10 +60,19 @@ namespace Ibutton_CS.Container
 
                         Console.WriteLine();
 
-                        if (deviceAddress[0].ToString() == "83")
-                        {   
+                        if (deviceAddress[0].ToString() == "83") {
                             IButton_ClearMemoryLog();
-                            StartNewMission();
+                            
+                            int sampleRateInSeconds = 600;
+                            byte[] alarmTemp = new byte[] { 0x00, 0x0A };
+                            bool[] alarmEnable = new bool[] {false, true};
+                            bool SUTA = false;
+                            byte missionStartDelay = 0x00;
+
+                            // StartNewMission(sampleRateInSeconds: 600, alarmTemp, alarmEnable, SUTA, missionStartDelay);
+                            isMissionRunning();
+                            GetMissionSampleCount();
+                            GetMissionTimestamp();
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -83,26 +92,17 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void StartNewMission() {
-
-            int sampleRate = 600;
-
-            byte alarmTempLow = 0x00;           // low Alarm 51°
-            byte alarmTempHigh = 0x0A;          // High Alarm 40°
-
+        public void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay)
+        {
             bool SUTAMode = true;
 
-            byte missionStartDelay = 0x00;
+            StartMissionArray();
 
-            for (int i = 0; i < newMission.Length - 1; i++) {
-                newMission[i] = 0x00;
-            }
-
-            // set mission time
+            // Set mission time
             SetTime(true);
 
-            if (sampleRate % 60 == 0x00) {
-                sampleRate = (sampleRate / 60) & 0x3FFF;
+            if (sampleRateInSeconds % 60 == 0x00) {
+                sampleRateInSeconds = (sampleRateInSeconds / 60) & 0x3FFF;
                 SetSampleRateType(false);
             }
             else {
@@ -110,9 +110,9 @@ namespace Ibutton_CS.Container
                 throw new Exception("Erro, período de leitura inválido");
             }
 
-            SetSampleRate(sampleRate);
+            SetSampleRate(sampleRateInSeconds);
 
-            SetAlarms(alarmTempLow, false, alarmTempHigh, true);
+            SetAlarms(alarmTemp, alarmEnable);
 
             // Enable Clock device
             SetClockRunEnable(true);
@@ -135,11 +135,18 @@ namespace Ibutton_CS.Container
             newMission[31] = 0xFF;
 
             // byte[] mission = new byte[] { 0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0xFC, 0x01, 0xC5, 0xFF, 0xFF, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-            byte[] mission = new byte[] { 0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xC5, 0x00, 0x00, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            byte[] mission = new byte[] {0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xC5, 0x00, 0x00, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
             LoadMissionToMemory(newMission);
 
             StartMission();
+        }
+
+        public void StartMissionArray()
+        {
+            for (int i = 0; i < newMission.Length - 1; i++) {
+                newMission[i] = 0x00;
+            }
         }
 
         public void StartMission() {
@@ -155,7 +162,6 @@ namespace Ibutton_CS.Container
                 WriteBytes(command);
 
                 crc = ReadBytes(2);
-                Console.WriteLine("Start Mission CRC: {0}", Convert.ToHexString(crc));
 
                 WriteByte(releaseByte);
 
@@ -175,16 +181,91 @@ namespace Ibutton_CS.Container
                 if ((status != 0xAA) && (status != 0x55)) {
                     throw new Exception("Erro durante a operação de cópia. Code " + Convert.ToString(status) + "\n");
                 }
-                else {
-                    Console.WriteLine("Operação de cópia realizada com sucesso! status code: {0:X2}", status);
-                }
 
                 portAdapter.Reset();
-
             }
             catch (Exception e) {
                 Console.WriteLine(e.Message);
             }
+        }
+
+        public bool isMissionRunning() {
+
+            Device device = new Device();
+
+            bool isRunning = true;
+            byte[] memoryArray = new byte[64];
+            
+            device.ReadDevice(memoryArray, portAdapter, deviceAddress, memoryArray);
+
+            isRunning = GetFlag(0x215, 0b10, memoryArray);
+
+            if (isRunning) {
+                Console.WriteLine("Uma missão esá rodando");
+            }
+            else {
+                Console.WriteLine("Nenhuma missão esá rodando");
+            }
+            return isRunning;
+        }
+
+        public int GetMissionSampleCount()
+        {
+            int totalSamples = 0x00;
+
+            int missionSamplesLowByte = 0x00;
+            int missionSamplesCenterByte = 0x00;
+            int missionSamplesHighByte = 0x00;
+            
+            Device device = new Device();
+
+            byte[] memoryArray = new byte[64];
+
+            device.ReadDevice(memoryArray, portAdapter, deviceAddress, memoryArray);
+           
+
+            missionSamplesLowByte = memoryArray[0x220 & 0x3F];
+            missionSamplesCenterByte = memoryArray[0x221 & 0x3F];
+            missionSamplesHighByte = memoryArray[0x222 & 0x3F];
+
+            Console.WriteLine("missionSamplesLowByte: " + missionSamplesLowByte);
+            Console.WriteLine("missionSamplesCenterByte: " + missionSamplesCenterByte);
+            Console.WriteLine("missionSamplesHighByte: " + missionSamplesHighByte);
+
+            totalSamples |= missionSamplesLowByte;
+            totalSamples |= (missionSamplesCenterByte << 0x16);
+            totalSamples |= (missionSamplesHighByte << 0x24);
+
+            Console.WriteLine("TOTAL SAMPLE COUNT: " + totalSamples);
+
+            return totalSamples;
+        }
+
+        public int GetMissionTimestamp()
+        {
+            int timestamp = 0x00;
+            byte timestampB1 = 0x00;
+            byte timestampB2 = 0x00;
+            byte timestampB3 = 0x00;
+            byte timestampB4 = 0x00;
+
+            Device device = new Device();
+            byte[] memoryArray = new byte[64];
+
+            device.ReadDevice(memoryArray, portAdapter, deviceAddress, memoryArray);
+
+            timestampB4 = memoryArray[0x219 & 0x3F];
+            timestampB3 = memoryArray[0x21A & 0x3F];
+            timestampB2 = memoryArray[0x21B & 0x3F];
+            timestampB1 = memoryArray[0x21C & 0x3F];
+
+
+            Console.WriteLine("timestampB1: {0:X2}", timestampB1);
+            Console.WriteLine("timestampB2: {0:X2}", timestampB2);
+            Console.WriteLine("timestampB3: {0:X2}", timestampB3);
+            Console.WriteLine("timestampB4: {0:X2}", timestampB4);
+
+            return timestamp;
         }
 
         public void IButton_ClearMemoryLog()
@@ -195,15 +276,10 @@ namespace Ibutton_CS.Container
             MatchRom(deviceAddress);
 
             try {
-
-                Console.Write("Clear memory command: ");
                 WriteBytes(commands);
 
                 byte[] crc = new byte[2];
                 crc = ReadBytes(2);
-
-                Console.WriteLine("CRC: {0:X2}\n", Convert.ToHexString(crc));
-
                
                 WriteByte(releasebyte);
 
@@ -227,9 +303,6 @@ namespace Ibutton_CS.Container
                 if ((status != 0xAA) && (status != 0x55)) {
                     throw new Exception("Erro durante a limpeza de mémoria. Code " + Convert.ToString(status) + "\n");
                 }
-                else {
-                    Console.WriteLine("Mémoria de log limpa com sucesso! status code: {0:X2}", status);
-                }
             }
             catch (Exception e) {
                 Console.WriteLine(e.Message);
@@ -250,12 +323,10 @@ namespace Ibutton_CS.Container
 
             try
             {
-                Console.WriteLine("\n\npacote enviado: {0}\n", Convert.ToHexString(command));
                 WriteBytes(command);
 
                 byte[] crc = new byte[2];
                 crc = ReadBytes(2);
-                Console.WriteLine("CRC: {0}", Convert.ToHexString(crc));
 
                 ReadScratchpad();
                 CopyScratchpad();
@@ -284,11 +355,6 @@ namespace Ibutton_CS.Container
                 }
                 else {
                     scratchpadmemory = ReadBytes(32);
-
-                    for(int i = 0; i < scratchpadmemory.Length - 1; i++) {
-                        Console.Write("{0:X2} ", scratchpadmemory[i]);
-                    }
-
                     return scratchpadmemory;
                 }
 
@@ -311,7 +377,6 @@ namespace Ibutton_CS.Container
                 WriteBytes(command);
 
                 crc = ReadBytes(2);
-                Console.WriteLine("Copy scaratchpad CRC: {0}", Convert.ToHexString(crc));
 
                 WriteByte(releaseByte);
 
@@ -331,14 +396,15 @@ namespace Ibutton_CS.Container
                 if ((status != 0xAA) && (status != 0x55)) {
                     throw new Exception("Erro durante a operação de cópia. Code " + Convert.ToString(status) + "\n");
                 }
-                else {
-                    Console.WriteLine("Operação de cópia realizada com sucesso! status code: {0:X2}", status);
-                }
-
             }
             catch(Exception e) {
                 Console.WriteLine(e.Message);
             }
+        }
+
+        public void ReadMemoryLog()
+        {
+            // Realiza a leitura e conversão das temperaturas lidas pelo ibutton
         }
 
         public bool ResetOneWire(byte[] address) {
@@ -372,7 +438,7 @@ namespace Ibutton_CS.Container
 
                 if(address.Length != 0x08)
                 {
-                    throw new Exception("Erro no endereço do divice");
+                    throw new Exception("Erro no endereço do device");
                 }
                 else
                 {
@@ -389,10 +455,7 @@ namespace Ibutton_CS.Container
         {
             for(int i = 0; i <=  bytes.Length - 1; i++) {
                 portAdapter.PutByte(bytes[i]);
-                Console.Write("{0:X2} ", bytes[i]);
             }
-
-            Console.WriteLine();
         }
 
         public void WriteByte(byte bytes) {
@@ -432,7 +495,6 @@ namespace Ibutton_CS.Container
             }
         }
 
-
         public void SetMissionStartDelay(int startDelay)
         {
             int lowByte = (byte)(startDelay & 0xFF);
@@ -461,7 +523,7 @@ namespace Ibutton_CS.Container
 
             if(channel == 0x00)
             {
-                bool flag = GetFlag(0x213 + 1, 0x04, missionRegister);
+                bool flag = GetFlag(0x213, 0x04, missionRegister);
                 resolution =  (flag ? 0.0625 : 0.5);
             }
 
@@ -548,27 +610,26 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void SetAlarms(byte tempLow, bool alarmeLowEnable, byte tempHigh, bool alarmeHighEnable)
+        public void SetAlarms(byte[] tempAlarm, bool[] alarmEnable)
         {
-            int tempAlarm = 2 * tempLow + 82;
+            int temp = 2 * tempAlarm[0] + 82;
 
-            SetFlag(0x208, (byte)tempAlarm, true, newMission);
+            SetFlag(0x208, (byte)temp, true, newMission);
             
-            tempAlarm = 2 * tempHigh + 82; 
-            SetFlag(0x209, (byte)tempAlarm, true, newMission);
+            temp = 2 * tempAlarm[1] + 82; 
+            SetFlag(0x209, (byte)temp, true, newMission);
 
-            EnableAlarm(alarmeLowEnable, alarmeHighEnable);
+            EnableAlarm(alarmEnable);
         }
 
-        public void EnableAlarm(bool alarmLowEnable, bool alarmHighEnable)
+        public void EnableAlarm(bool[] alarmEnable)
         {
             byte alarmBitMask = 0x00;
 
-            if (alarmLowEnable) { alarmBitMask |= 0x01; }
-            if (alarmHighEnable) { alarmBitMask |= 0x02; }
+            if (alarmEnable[0]) { alarmBitMask |= 0x01; }
+            if (alarmEnable[1]) { alarmBitMask |= 0x02; }
 
             SetFlag(0x210, alarmBitMask, true, newMission);
-
         }
 
         public bool GetFlag(int register, byte bitMask, byte[] state)

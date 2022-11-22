@@ -30,8 +30,9 @@ namespace Ibutton_CS.HardwareMap
         }
 
 
-        public byte[] ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] readBuffer, int offset, byte[] extraInfo)
+        public void ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] mission, int offset, byte[] extraInfo, byte[] deviceAddress)
         {
+            Console.WriteLine("******************** Read Memory ******************** ");
             byte[] rawBuffer = new byte[16];
 
             rawBuffer[0] = (byte)0x66;
@@ -60,8 +61,13 @@ namespace Ibutton_CS.HardwareMap
             rawBuffer[15] = (byte)0x0FF;
 
 
-            if (!readContinue) {
+            if (!readContinue)
+            {
                 try {
+
+                    portAdapter.Reset();
+                    portAdapter.SelectDevice(deviceAddress, 0);
+
                     portAdapter.DataBlock(rawBuffer, 0, 15);
 
                     if (CRC16.Compute(rawBuffer, 0, 15, 0) != 0x0000B001) {
@@ -95,16 +101,17 @@ namespace Ibutton_CS.HardwareMap
                 if (CRC16.Compute(rawBuffer, 1, rawBuffer.Length - 1, 0) != 0x0000B001) {
                     throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
                 }
+
+                if(!readContinue)
+                {
+                    Array.Copy(rawBuffer, 1, mission, 0, 32);
+                }else {
+                    Array.Copy(rawBuffer, 1, mission, 32, 32);
+                }
             }
             catch (Exception e) {
                 Console.WriteLine(e.Message);
             }
-            return rawBuffer;
-        }
-
-
-        public void LoadResults() {
-
         }
     }
 }
