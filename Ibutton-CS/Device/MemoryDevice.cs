@@ -3,24 +3,21 @@ using DalSemi.Utils;
 using System.Data;
 using System.Globalization;
 
-namespace Ibutton_CS.HardwareMap
-{
-    public class MemoryRegisterMap
-    {
-        public  int _pageLength;
-        public  int _numberPages;
-        public  int _size;
-        public  string _bankDescription;
-        public  int _startPhysicalAddress;
-        public  bool _generalPurposeMemory;
-        public  bool _readOnly;
-        public  bool _readWrite;
+namespace Ibutton_CS.HardwareMap {
+    public class MemoryRegisterMap {
+        public int _pageLength;
+        public int _numberPages;
+        public int _size;
+        public string _bankDescription;
+        public int _startPhysicalAddress;
+        public bool _generalPurposeMemory;
+        public bool _readOnly;
+        public bool _readWrite;
 
-        public MemoryRegisterMap( int pageLength, int numberPages, string bankDescription,
-            int startPhysicalAddress, bool generalPurposeMemory, bool readOnly, bool readWrite)
-        {
+        public MemoryRegisterMap(int pageLength, int numberPages, string bankDescription,
+            int startPhysicalAddress, bool generalPurposeMemory, bool readOnly, bool readWrite) {
             _pageLength = pageLength;
-            _numberPages = numberPages; 
+            _numberPages = numberPages;
             _size = numberPages * pageLength;
             _bankDescription = bankDescription;
             _startPhysicalAddress = startPhysicalAddress;
@@ -30,9 +27,7 @@ namespace Ibutton_CS.HardwareMap
         }
 
 
-        public void ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] mission, int offset, byte[] extraInfo, byte[] deviceAddress)
-        {
-            Console.WriteLine("******************** Read Memory ******************** ");
+        public void ReadPageCRC(PortAdapter portAdapter, int page, bool readContinue, byte[] mission, int offset, byte[] extraInfo, byte[] deviceAddress) {
             byte[] rawBuffer = new byte[16];
 
             rawBuffer[0] = (byte)0x66;
@@ -61,8 +56,7 @@ namespace Ibutton_CS.HardwareMap
             rawBuffer[15] = (byte)0x0FF;
 
 
-            if (!readContinue)
-            {
+            if (!readContinue) {
                 try {
 
                     portAdapter.Reset();
@@ -102,10 +96,10 @@ namespace Ibutton_CS.HardwareMap
                     throw new Exception("Invalid CRC16 read from device, block " + Convert.ToHexString(rawBuffer));
                 }
 
-                if(!readContinue)
-                {
+                if (!readContinue) {
                     Array.Copy(rawBuffer, 1, mission, 0, 32);
-                }else {
+                }
+                else {
                     Array.Copy(rawBuffer, 1, mission, 32, 32);
                 }
             }

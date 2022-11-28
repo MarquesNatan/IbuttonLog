@@ -61,18 +61,24 @@ namespace Ibutton_CS.Container
                         Console.WriteLine();
 
                         if (deviceAddress[0].ToString() == "83") {
-                            IButton_ClearMemoryLog();
-                            
+                            // IButton_ClearMemoryLog();
+
+                            // IButton_ClearMemoryLog();
+
                             int sampleRateInSeconds = 600;
                             byte[] alarmTemp = new byte[] { 0x00, 0x0A };
-                            bool[] alarmEnable = new bool[] {false, true};
+                            bool[] alarmEnable = new bool[] { false, true };
                             bool SUTA = false;
                             byte missionStartDelay = 0x00;
 
                             // StartNewMission(sampleRateInSeconds: 600, alarmTemp, alarmEnable, SUTA, missionStartDelay);
-                            isMissionRunning();
-                            GetMissionSampleCount();
-                            GetMissionTimestamp();
+                            // isMissionRunning();
+                            // GetMissionSampleCount();
+                            // GetMissionTimestamp();
+
+                            for(int i = 16; i <= 32 - 1; i++) {
+                                 GetTempSample(i, 10, 0.0625);
+                            }
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -228,22 +234,16 @@ namespace Ibutton_CS.Container
             missionSamplesCenterByte = memoryArray[0x221 & 0x3F];
             missionSamplesHighByte = memoryArray[0x222 & 0x3F];
 
-            Console.WriteLine("missionSamplesLowByte: " + missionSamplesLowByte);
-            Console.WriteLine("missionSamplesCenterByte: " + missionSamplesCenterByte);
-            Console.WriteLine("missionSamplesHighByte: " + missionSamplesHighByte);
-
             totalSamples |= missionSamplesLowByte;
-            totalSamples |= (missionSamplesCenterByte << 0x16);
-            totalSamples |= (missionSamplesHighByte << 0x24);
-
-            Console.WriteLine("TOTAL SAMPLE COUNT: " + totalSamples);
+            totalSamples |= (missionSamplesCenterByte << 8);
+            totalSamples |= (missionSamplesHighByte << 16);
 
             return totalSamples;
         }
 
-        public int GetMissionTimestamp()
+        public long GetMissionTimestamp()
         {
-            int timestamp = 0x00;
+            long timestamp = 0x00;
             byte timestampB1 = 0x00;
             byte timestampB2 = 0x00;
             byte timestampB3 = 0x00;
@@ -259,11 +259,18 @@ namespace Ibutton_CS.Container
             timestampB2 = memoryArray[0x21B & 0x3F];
             timestampB1 = memoryArray[0x21C & 0x3F];
 
-
+#if DEBUG
+            // Timestamp
             Console.WriteLine("timestampB1: {0:X2}", timestampB1);
             Console.WriteLine("timestampB2: {0:X2}", timestampB2);
             Console.WriteLine("timestampB3: {0:X2}", timestampB3);
             Console.WriteLine("timestampB4: {0:X2}", timestampB4);
+#endif
+            timestamp |= timestampB4;
+            timestamp |= (timestampB3 << 8);
+            timestamp |= (timestampB2 << 16);
+            timestamp |= (timestampB1 << 24);
+         
 
             return timestamp;
         }
@@ -335,6 +342,61 @@ namespace Ibutton_CS.Container
             {
                 Console.WriteLine(e.Message);
             }
+        }
+
+        public float GetTempSample(int sampleCount, int sampleRateInMinutes, double resolution) {
+            
+            float tempLowByte = 0x00; 
+            float tempHighByte = 0x00;
+            float temp = 0x00;
+
+            int page = (sampleCount / 32);
+            if(sampleCount % 32 != 0)
+            {
+                page++;
+            }
+
+            int baseTemp = (sampleCount % 32) * 2;
+
+            Device device = new Device();
+            byte[] memoryLogPage = new byte[32];
+            device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
+
+            // Conversão 16 bits: ϑ(°C) = TRH/2 - 41+ TRL/512
+            if (resolution == 0.0625)
+            {
+                tempHighByte = (float) memoryLogPage[baseTemp] / 2 - 41;
+                tempLowByte =  (float) memoryLogPage[baseTemp + 1] / 512;
+
+                temp = tempHighByte + tempLowByte;
+                Console.WriteLine("Amostra {0} | Página {1} |  tempHighByte: {3} | tempLowByte: {4} | Temperatura {2}", baseTemp, page, temp, tempHighByte, tempLowByte);
+            }
+            // Conversão 8 bits: ϑ(°C) = TRH/2 - 41
+            else
+            {
+
+            }
+
+            return temp;
+
+        }
+
+        public double TempConvert(double resolution, int samplesQuantity) {
+            
+            double temp = 0x00;
+
+            // Conversão de temperatura para 16 bits: ϑ(°C) = TRH/2 - 41+ TRL/512
+            if (resolution == 0.0625)
+            {
+
+            }
+            // Conversão de temperatura para 8 bits: ϑ(°C) = TRH/2 - 41
+            else if (resolution == 0.5) {
+
+            }
+
+
+            return temp;
         }
 
         public byte[] ReadScratchpad()
@@ -569,6 +631,27 @@ namespace Ibutton_CS.Container
 
             SetFlag(0x206, sampleRateLow, true, newMission);
             SetFlag(0x207, sampleRateHigh, true, newMission);
+        }
+
+        public int GetSampleRate() {
+            int sampleRate = 0x00;
+
+            byte sampleRateLow;
+            byte sampleRateHigh;
+
+            Device device = new Device();
+            byte[] memoryArray = new byte[64];
+
+            device.ReadDevice(memoryArray, portAdapter, deviceAddress, memoryArray);
+
+            sampleRateLow = memoryArray[0x206 & 0x3F];
+            sampleRateHigh = memoryArray[0x207 & 0x3F];
+
+            sampleRate |= sampleRateLow;
+            sampleRate |= (sampleRateHigh << 8);
+
+            Console.WriteLine("Sample Rate: " + sampleRate);
+            return sampleRate;
         }
 
         public void SetSampleRateType(bool sampleRateIsMinutes)
