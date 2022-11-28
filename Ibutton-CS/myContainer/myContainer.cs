@@ -76,7 +76,8 @@ namespace Ibutton_CS.Container
                             // GetMissionSampleCount();
                             // GetMissionTimestamp();
 
-                            for(int i = 16; i <= 32 - 1; i++) {
+                            for(int i = 0; i <= 32 - 1; i++)
+                            {
                                  GetTempSample(i, 10, 0.0625);
                             }
                         }
@@ -351,12 +352,8 @@ namespace Ibutton_CS.Container
             float temp = 0x00;
 
             int page = (sampleCount / 32);
-            if(sampleCount % 32 != 0)
-            {
-                page++;
-            }
 
-            int baseTemp = (sampleCount % 32) * 2;
+            int baseTemp = ((sampleCount * 2) % 32);
 
             Device device = new Device();
             byte[] memoryLogPage = new byte[32];
@@ -370,6 +367,7 @@ namespace Ibutton_CS.Container
 
                 temp = tempHighByte + tempLowByte;
                 Console.WriteLine("Amostra {0} | Página {1} |  tempHighByte: {3} | tempLowByte: {4} | Temperatura {2}", baseTemp, page, temp, tempHighByte, tempLowByte);
+                Console.WriteLine();
             }
             // Conversão 8 bits: ϑ(°C) = TRH/2 - 41
             else
