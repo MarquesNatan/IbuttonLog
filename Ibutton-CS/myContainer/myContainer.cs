@@ -76,7 +76,7 @@ namespace Ibutton_CS.Container
                             // GetMissionSampleCount();
                             // GetMissionTimestamp();
 
-                            for(int i = 0; i <= 32 - 1; i++)
+                            for(int i = 0; i <= 64 - 1; i++)
                             {
                                  GetTempSample(i, 10, 0.0625);
                             }
@@ -351,7 +351,7 @@ namespace Ibutton_CS.Container
             float tempHighByte = 0x00;
             float temp = 0x00;
 
-            int page = (sampleCount / 32);
+            int page = (int)((sampleCount * 2) / 32);
 
             int baseTemp = ((sampleCount * 2) % 32);
 
