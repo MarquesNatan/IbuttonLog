@@ -61,25 +61,17 @@ namespace Ibutton_CS.Container
                         Console.WriteLine();
 
                         if (deviceAddress[0].ToString() == "83") {
-                            // IButton_ClearMemoryLog();
+                            IButton_ClearMemoryLog();
 
                             // IButton_ClearMemoryLog();
 
                             int sampleRateInSeconds = 600;
                             byte[] alarmTemp = new byte[] { 0x00, 0x0A };
-                            bool[] alarmEnable = new bool[] { false, true };
+                            bool[] alarmEnable = new bool[] { false, false };
                             bool SUTA = false;
                             byte missionStartDelay = 0x00;
 
-                            // StartNewMission(sampleRateInSeconds: 600, alarmTemp, alarmEnable, SUTA, missionStartDelay);
-                            // isMissionRunning();
-                            // GetMissionSampleCount();
-                            // GetMissionTimestamp();
-
-                            for(int i = 0; i <= 64 - 1; i++)
-                            {
-                                 GetTempSample(i, 10, 0.0625);
-                            }
+                            StartNewMission(sampleRateInSeconds: 600, alarmTemp, alarmEnable, SUTA, missionStartDelay, 0.0625);
                         }
 
                     } while (portAdapter.GetNextDevice(deviceAddress, 0));
@@ -99,10 +91,8 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay)
+        public void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay, double resolution)
         {
-            bool SUTAMode = true;
-
             StartMissionArray();
 
             // Set mission time
@@ -124,13 +114,15 @@ namespace Ibutton_CS.Container
             // Enable Clock device
             SetClockRunEnable(true);
 
-            if (SUTAMode) {
+            if (SUTA) {
                 SetStartUponTemperatureAlarmEnable(true);
             }
 
-            SetMissionResolution(0, 0.0625, newMission);
+            SetMissionResolution(0, resolution, newMission);
 
             SetMissionStartDelay(missionStartDelay);
+
+            EnableChannels(0, true);
 
             newMission[25] = 0xFF;
             newMission[26] = 0xFF;
@@ -142,7 +134,7 @@ namespace Ibutton_CS.Container
             newMission[31] = 0xFF;
 
             // byte[] mission = new byte[] { 0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0xFC, 0x01, 0xC5, 0xFF, 0xFF, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-            byte[] mission = new byte[] {0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xC5, 0x00, 0x00, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+            // byte[] mission = new byte[] {0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xC5, 0x00, 0x00, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
             LoadMissionToMemory(newMission);
 
@@ -345,37 +337,47 @@ namespace Ibutton_CS.Container
             }
         }
 
-        public float GetTempSample(int sampleCount, int sampleRateInMinutes, double resolution) {
-            
-            float tempLowByte = 0x00; 
+        public float GetTempSample(int sampleCount, double resolution)
+        {
+
+            float temperature = 0x00;
+
             float tempHighByte = 0x00;
-            float temp = 0x00;
+            float tempLowByte = 0x00;
 
-            int page = (int)((sampleCount * 2) / 32);
-
-            int baseTemp = ((sampleCount * 2) % 32);
+            int page = 0x00;
+            int baseTemp = 0x00;
 
             Device device = new Device();
             byte[] memoryLogPage = new byte[32];
-            device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
 
             // Conversão 16 bits: ϑ(°C) = TRH/2 - 41+ TRL/512
-            if (resolution == 0.0625)
-            {
-                tempHighByte = (float) memoryLogPage[baseTemp] / 2 - 41;
-                tempLowByte =  (float) memoryLogPage[baseTemp + 1] / 512;
+            if (resolution == 0.0625) {
+                page = (int)((sampleCount * 2) / 32);
+                baseTemp = (int)((sampleCount * 2) % 32);
 
-                temp = tempHighByte + tempLowByte;
-                Console.WriteLine("Amostra {0} | Página {1} |  tempHighByte: {3} | tempLowByte: {4} | Temperatura {2}", baseTemp, page, temp, tempHighByte, tempLowByte);
-                Console.WriteLine();
+                device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
+
+                tempHighByte = (float)memoryLogPage[baseTemp] / 2 - 41;
+                tempLowByte = (float)memoryLogPage[baseTemp + 1] / 512;
+
+                temperature = tempHighByte + tempLowByte;
+
             }
             // Conversão 8 bits: ϑ(°C) = TRH/2 - 41
-            else
-            {
+            else {
+                page = (int)(sampleCount) / 32;
+                baseTemp = (int)(sampleCount % 32);
 
+                device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
+
+                temperature = (float)memoryLogPage[baseTemp] / 2 - 41;
             }
 
-            return temp;
+            Console.WriteLine("Sample Count {0} | Página {1} | Temperatura {2}", sampleCount, page, temperature);
+            Console.WriteLine();
+
+            return temperature;
 
         }
 
@@ -605,7 +607,7 @@ namespace Ibutton_CS.Container
                 }
                 else
                 {
-                    SetFlag(0x213, 0x05, resolution == 0.0625 ? true : false, newMission);
+                    SetFlag(0x213, 0x04, resolution == 0.0625 ? true : false, newMission);
                 }
             }
             else
@@ -661,11 +663,7 @@ namespace Ibutton_CS.Container
         {
             if(channel == 0x00)
             {
-                SetFlag(0x213, 0x01, channelState, newMissionReg);
-            }
-            else
-            {
-                throw new Exception("Invalid channel, you did mean: Tempeature Channel?");
+                SetFlag(0x213, 0x01, channelState, newMission);
             }
         }
 
