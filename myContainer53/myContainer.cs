@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Runtime.Versioning;
+using System.Text;
 using System.Threading;
 using DalSemi.OneWire;
 using DalSemi.OneWire.Adapter;
@@ -31,34 +33,35 @@ namespace Ibutton_CS.Container
                 portAdapter.TargetAllFamilies();
 
                 portAdapter.Speed = OWSpeed.SPEED_REGULAR;
+
+                for(int i = 0; i <=  address.Length - 1; i++) {
+                    Console.Write(address[i]);
+                    Console.WriteLine(Convert.ToByte(address[i]));
+                }
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
             }
-            finally
-            {
-                if (portAdapter != null)
-                {
-                    portAdapter.EndExclusive();
-                }
-            }
         }
 
-        public static void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay, double missionResolution)
+        public static void PortAdapterEndExclusive() {
+            portAdapter.EndExclusive();
+            portAdapter.FreePort();
+        }
+
+        public static void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay, double resolution)
         {
             StartMissionArray();
 
             // Set mission time
             SetTime(true);
 
-            if (sampleRateInSeconds % 60 == 0x00)
-            {
+            if (sampleRateInSeconds % 60 == 0x00) {
                 sampleRateInSeconds = (sampleRateInSeconds / 60) & 0x3FFF;
                 SetSampleRateType(false);
             }
-            else
-            {
+            else {
                 SetSampleRateType(true);
                 throw new Exception("Erro, período de leitura inválido");
             }
@@ -70,14 +73,15 @@ namespace Ibutton_CS.Container
             // Enable Clock device
             SetClockRunEnable(true);
 
-            if (SUTA)
-            {
+            if (SUTA) {
                 SetStartUponTemperatureAlarmEnable(true);
             }
 
-            SetMissionResolution(0, missionResolution, newMission);
+            SetMissionResolution(0, resolution, newMission);
 
-            SetMissionStartDelay(0);
+            SetMissionStartDelay(missionStartDelay);
+
+            EnableChannels(0, true);
 
             newMission[25] = 0xFF;
             newMission[26] = 0xFF;
@@ -87,6 +91,9 @@ namespace Ibutton_CS.Container
             newMission[29] = 0xFF;
             newMission[30] = 0xFF;
             newMission[31] = 0xFF;
+
+            // byte[] mission = new byte[] { 0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02, 0xFC, 0x01, 0xC5, 0xFF, 0xFF, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+            // byte[] mission = new byte[] {0x4B, 0x32, 0x39, 0x55, 0x00, 0x00, 0x0A, 0x00, 0x52, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xC5, 0x00, 0x00, 0x5A, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
             LoadMissionToMemory(newMission);
 
@@ -260,7 +267,7 @@ namespace Ibutton_CS.Container
         }
 
         public static float GetTemperatureSample(int sampleCount, double resolution) {
-            
+
             float temperature = 0x00;
 
             float tempHighByte = 0x00;
@@ -273,31 +280,29 @@ namespace Ibutton_CS.Container
             byte[] memoryLogPage = new byte[32];
 
             // Conversão 16 bits: ϑ(°C) = TRH/2 - 41+ TRL/512
-            if (resolution == 0.0625)
-            {
+            if (resolution == 0.0625) {
                 page = (int)((sampleCount * 2) / 32);
-                baseTemp = (int)((sampleCount * 3) % 32);
+                baseTemp = (int)((sampleCount * 2) % 32);
 
                 device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
 
-                tempHighByte = (float) memoryLogPage[baseTemp] / 2 - 41;
+                tempHighByte = (float)memoryLogPage[baseTemp] / 2 - 41;
                 tempLowByte = (float)memoryLogPage[baseTemp + 1] / 512;
 
                 temperature = tempHighByte + tempLowByte;
 
             }
             // Conversão 8 bits: ϑ(°C) = TRH/2 - 41
-            else
-            {
-                page =     (int) (sampleCount) / 32;
-                baseTemp = (int) (sampleCount % 32);
+            else {
+                page = (int)(sampleCount) / 32;
+                baseTemp = (int)(sampleCount % 32);
 
                 device.ReadDeviceTemp(page, portAdapter, deviceAddress, memoryLogPage);
 
-                temperature = (float) memoryLogPage[baseTemp] / 2 - 41;
+                temperature = (float)memoryLogPage[baseTemp] / 2 - 41;
             }
 
-            Console.WriteLine("Amostra {0} | Página {1} | Temperatura {2}", baseTemp, page, temperature);
+            Console.WriteLine("Sample Count {0} | Página {1} | Temperatura {2}", sampleCount, page, temperature);
             Console.WriteLine();
 
             return temperature;
@@ -693,7 +698,7 @@ namespace Ibutton_CS.Container
 
         public static void EnableChannels(int channel, bool channelState) {
             if (channel == 0x00) {
-                SetFlag(0x213, 0x01, channelState, newMissionReg);
+                SetFlag(0x213, 0x01, channelState, newMission);
             }
             else {
                 throw new Exception("Invalid channel, you did mean: Tempeature Channel?");
