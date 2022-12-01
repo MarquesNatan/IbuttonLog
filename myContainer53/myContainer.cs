@@ -15,7 +15,7 @@ namespace Ibutton_CS.Container
         public static PortAdapter portAdapter = null;
 
         // @HACK
-        public static byte[] deviceAddress = new byte[8] { 0x53, 0xC7, 0x28, 0x10, 0x00, 0x00, 0x00, 0x9F };
+        public static byte[] deviceAddress = new byte[8];
 
         public static Device myDevice = new Device();
         public static byte[] newMissionReg = null;
@@ -34,10 +34,7 @@ namespace Ibutton_CS.Container
 
                 portAdapter.Speed = OWSpeed.SPEED_REGULAR;
 
-                for(int i = 0; i <=  address.Length - 1; i++) {
-                    Console.Write(address[i]);
-                    Console.WriteLine(Convert.ToByte(address[i]));
-                }
+                SetDeviceAddress(address);
             }
             catch (Exception e)
             {
@@ -48,6 +45,39 @@ namespace Ibutton_CS.Container
         public static void PortAdapterEndExclusive() {
             portAdapter.EndExclusive();
             portAdapter.FreePort();
+        }
+
+        public static void SetDeviceAddress(string addr)
+        {
+            String aux = "  ";
+            StringBuilder sb = new StringBuilder(aux);
+
+            int num = 0x0;
+            int count = 0;
+
+            byte[] hexAddress = new byte[8];
+
+            for(int i = 0; i <= addr.Length - 2; i +=2) {
+                sb[0] = addr[i];
+                sb[1] = addr[i + 1];
+
+                aux = sb.ToString();
+
+                num = byte.Parse(aux, System.Globalization.NumberStyles.HexNumber);
+                if (count <= 7) {
+                    deviceAddress[count] = (byte)num;
+                }
+                count++;
+            }
+
+            Console.WriteLine("\nvalores do vetor: ");
+            for (int i = 0; i <= deviceAddress.Length - 1; i++) {
+
+                Console.Write("{0:X2} ", deviceAddress[i]);
+
+            }
+
+            Array.Reverse(deviceAddress);
         }
 
         public static void StartNewMission(int sampleRateInSeconds, byte[] alarmTemp, bool[] alarmEnable, bool SUTA, byte missionStartDelay, double resolution)
@@ -260,8 +290,8 @@ namespace Ibutton_CS.Container
             Console.WriteLine("missionSamplesHighByte: " + missionSamplesHighByte);
 
             totalSamples |= missionSamplesLowByte;
-            totalSamples |= (missionSamplesCenterByte << 0x16);
-            totalSamples |= (missionSamplesHighByte << 0x24);
+            totalSamples |= (missionSamplesCenterByte << 8);
+            totalSamples |= (missionSamplesHighByte << 16);
 
             return totalSamples;
         }
